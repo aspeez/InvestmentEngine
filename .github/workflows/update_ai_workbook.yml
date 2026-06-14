@@ -1,0 +1,39 @@
+name: Daily Investment Engine Refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 12 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh workbook
+        env:
+          FMP_API_KEY: ${{ secrets.FMP }}
+          OPENAI_API_KEY: ${{ secrets.CHATGPT }}
+        run: python investment-engine/engine/data_engine.py
+
+      - name: Commit workbook changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add investment-engine/Ticker-Master.json investment-engine/sector
+          git diff --cached --quiet || git commit -m "chore: refresh investment engine outputs"
+          git push
