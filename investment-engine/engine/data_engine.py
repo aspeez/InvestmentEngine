@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import time
 from dataclasses import dataclass
@@ -18,9 +19,31 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SECTOR_DIR = REPO_ROOT / "sector"
 MASTER_JSON_PATH = REPO_ROOT / "Ticker-Master.json"
 DAILY_WORKBOOK_PREFIX = "investment_data"
-DAILY_REVIEW_PREFIX = "ticker_reviews"
 DATE_FORMAT = "%m%d%Y"
-DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+TICKER_REVIEW_PREFIX = "ticker_review"
+
+PILLAR_TARGET_PE_MULTIPLES: Dict[str, int] = {
+    "ai_power_generation": 22,
+    "ai_networking": 40,
+    "ai_memory_and_storage": 18,
+    "ai_land": 35,
+    "ai_heating_and_cooling": 28,
+    "ai_grid_and_power_transmission": 25,
+    "ai_electrical_infrastructure": 25,
+    "ai_construction": 22,
+    "ai_cybersecurity": 55,
+    "ai_semiconductor_chip_manufacturing": 22,
+    "ai_server_and_rack_systems": 18,
+    "ai_software_and_platforms": 65,
+    "ai_backup_power": 30,
+    "ai_cloud": 30,
+    "ai_fire_detection": 22,
+    "ai_water": 25,
+    "ai_insurance_and_risk": 25,
+    "ai_security": 22,
+    "ai_compute_chips": 45,
+    "default": 25,
+}
 
 KNOWN_SHEET_NAMES = {
     "AI Power Generation": "AI Power Gen",
@@ -53,12 +76,14 @@ COLUMNS = [
     "Market Cap",
     "Buy Zone",
     "Target Price",
+    "Graham Undervalued",
     "Upside %",
     "Revenue Growth %",
     "EPS Growth %",
     "Backlog Growth %",
     "Gross Margin %",
     "Net Cash Ratio",
+    "Investment Score",
 ]
 
 
@@ -135,6 +160,61 @@ class FMPClient:
         self._ratios_bulk_cache = cache
         return cache
 
+    def _get_forward_eps(self, symbol: str) -> Optional[float]:
+        # Primary: annual analyst estimates — field is epsAvg
+        try:
+            response = self.session.get(
+                f"{FMP_BASE_URL}/analyst-estimates",
+                params={"symbol": symbol, "period": "annual", "page": 0, "limit": 10, "apikey": self.api_key},
+                timeout=25,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if isinstance(payload, list):
+                for row in payload:
+                    if not isinstance(row, dict):
+                        continue
+                    val = self._to_float(row.get("epsAvg"))
+                    if val is not None:
+                        return val
+        except Exception:
+            pass
+
+        # Fallback: earnings endpoint — future quarters have epsActual == null
+        try:
+            response = self.session.get(
+                f"{FMP_BASE_URL}/earnings",
+                params={"symbol": symbol, "apikey": self.api_key},
+                timeout=25,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if isinstance(payload, list):
+                for row in payload:
+                    if not isinstance(row, dict):
+                        continue
+                    if row.get("epsActual") is not None:
+                        continue  # already reported — skip
+                    val = self._to_float(row.get("epsEstimated"))
+                    if val is not None:
+                        return val
+        except Exception:
+            pass
+
+        return None
+
+    def _get_book_value_per_share(self, symbol: str) -> Optional[float]:
+        response = self.session.get(
+            f"{FMP_BASE_URL}/ratios",
+            params={"symbol": symbol, "apikey": self.api_key},
+            timeout=25,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, list) and payload:
+            return self._to_float(payload[0].get("bookValuePerShare"))
+        return None
+
     def get_metrics(self, ticker: str) -> Dict[str, Optional[float]]:
         # Use FMP batch-quote endpoint for current price/market-cap parity with API docs.
         quote = self._get("batch-quote", ticker, symbol_param="symbols") or {}
@@ -144,7 +224,8 @@ class FMPClient:
         growth = self._get("financial-growth", ticker) or {}
         income = self._get("income-statement", ticker) or {}
         balance = self._get("balance-sheet-statement", ticker) or {}
-        target = self._get("price-target-consensus", ticker) or {}
+        book_value_per_share = self._get_book_value_per_share(ticker)
+        forward_eps = self._get_forward_eps(ticker)
 
         market_cap = self._to_float(market_cap_data.get("marketCap")) or self._to_float(quote.get("marketCap"))
         cash_and_cash_equivalents = self._to_float(balance.get("cashAndCashEquivalents"))
@@ -159,7 +240,7 @@ class FMPClient:
         gross_margin = self._to_float(ratios.get("grossProfitMarginTTM"))
         if gross_margin is None:
             gross_margin = self._to_float(income.get("grossProfitRatio"))
-        analyst_target = target.get("targetConsensus") or target.get("priceTarget")
+        ttm_eps = self._to_float(ratios.get("epsTTM"))
 
         return {
             "Current Price": quote.get("price"),
@@ -167,7 +248,9 @@ class FMPClient:
             "P/E Ratio": self._to_float(ratios.get("priceToEarningsRatioTTM")),
             "P/S Ratio": self._to_float(ratios.get("priceToSalesRatioTTM")) or self._to_float(ratios.get("priceToSalesRatio")),
             "Market Cap": market_cap,
-            "Target Price": analyst_target,
+            "Forward EPS": forward_eps,
+            "TTM EPS": ttm_eps,
+            "Book Value Per Share": book_value_per_share,
             "Revenue Growth %": revenue_growth * 100 if revenue_growth is not None else None,
             "EPS Growth %": eps_growth * 100 if eps_growth is not None else None,
             "Gross Margin %": gross_margin * 100 if gross_margin is not None else None,
@@ -296,6 +379,79 @@ def sheet_name_for_pillar(pillar: str) -> str:
     return " ".join(abbreviated)[:31]
 
 
+def pillar_pe_multiple(pillar: str) -> int:
+    key = pillar.lower().replace(" ", "_").replace("-", "_")
+    return PILLAR_TARGET_PE_MULTIPLES.get(key, PILLAR_TARGET_PE_MULTIPLES["default"])
+
+
+def _graham_number(eps: Optional[float], bvps: Optional[float]) -> Optional[float]:
+    if eps is None or bvps is None or eps <= 0 or bvps <= 0:
+        return None
+    return math.sqrt(22.5 * eps * bvps)
+
+
+def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[float]:
+    def clamp(val: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, val))
+
+    def norm(val: Optional[float], lo: float, hi: float) -> Optional[float]:
+        if val is None:
+            return None
+        return clamp((val - lo) / (hi - lo) * 100, 0.0, 100.0)
+
+    def norm_inv(val: Optional[float], lo: float, hi: float) -> Optional[float]:
+        if val is None:
+            return None
+        return clamp((hi - val) / (hi - lo) * 100, 0.0, 100.0)
+
+    # Growth (35%)
+    rev_score = norm(record.get("Revenue Growth %"), -50.0, 100.0)       # 20%
+    eps_score = norm(record.get("EPS Growth %"), -50.0, 100.0)           # 10%
+    backlog_score = norm(record.get("Backlog Growth %"), -50.0, 100.0)   # 5%
+
+    # Financial Quality (25%)
+    gm_score = norm(record.get("Gross Margin %"), 0.0, 100.0)            # 15%
+    ncr_score = norm(record.get("Net Cash Ratio"), -1.0, 2.0)            # 10%
+
+    # Valuation (25%)
+    pe = record.get("P/E Ratio")
+    pe_score: Optional[float] = 0.0 if (pe is not None and pe <= 0) else norm_inv(pe, 0.0, 60.0)  # 5%
+    ps_score = norm_inv(record.get("P/S Ratio"), 0.0, 30.0)              # 10%
+    upside_score = norm(record.get("Upside %"), -30.0, 100.0)  # 10%
+
+    # Entry Timing (15%)
+    rsi = record.get("RSI")
+    # Score highest at RSI=30 (oversold), linearly to 0 at RSI=80 (overbought)
+    rsi_score: Optional[float] = clamp((80.0 - rsi) / 50.0 * 100.0, 0.0, 100.0) if rsi is not None else None  # 10%
+    current_price = record.get("Current Price")
+    buy_zone = record.get("Buy Zone")
+    if current_price is not None and buy_zone is not None and buy_zone > 0:
+        # Score 100 at or below buy zone, 0 when 25%+ above it
+        ratio = current_price / buy_zone
+        bz_score: Optional[float] = clamp((1.25 - ratio) / 0.25 * 100.0, 0.0, 100.0)
+    else:
+        bz_score = None
+
+    weighted = [
+        (rev_score, 0.20),
+        (eps_score, 0.10),
+        (backlog_score, 0.05),
+        (gm_score, 0.15),
+        (ncr_score, 0.10),
+        (pe_score, 0.05),
+        (ps_score, 0.10),
+        (upside_score, 0.10),
+        (rsi_score, 0.10),
+        (bz_score, 0.05),
+    ]
+
+    total_weight = sum(w for s, w in weighted if s is not None)
+    if total_weight == 0:
+        return None
+    weighted_sum = sum(s * w for s, w in weighted if s is not None)
+    return round(weighted_sum / total_weight, 1)
+
+
 def fetch_records_for_pillar(
     context: TickerContext,
     client: Optional[FMPClient],
@@ -311,30 +467,84 @@ def fetch_records_for_pillar(
                 metrics = {}
 
         current_price = metrics.get("Current Price")
-        target_price = metrics.get("Target Price")
+        forward_eps = metrics.get("Forward EPS")
+        ttm_eps = metrics.get("TTM EPS")
+        bvps = metrics.get("Book Value Per Share")
 
-        record: Dict[str, Optional[float]] = {
+        # Target Price via Forward P/E; fall back to TTM EPS
+        eps_used = forward_eps if (forward_eps is not None and forward_eps != 0) else ttm_eps
+        if eps_used is not None and eps_used != 0:
+            pe_multiple = pillar_pe_multiple(context.pillar)
+            target_price: Optional[float] = eps_used * pe_multiple
+        else:
+            target_price = None
+            print(f"[WARN] Target Price unavailable for {ticker} — missing EPS data")
+
+        # Upside % as a percentage (e.g. 25.0 for 25%)
+        if target_price is not None and current_price not in (None, 0):
+            upside_pct: Optional[float] = ((target_price - current_price) / current_price) * 100
+        else:
+            upside_pct = None
+
+        # Graham Number and undervaluation flag
+        graham = _graham_number(eps_used, bvps)
+        if graham is None:
+            graham_undervalued: Optional[bool] = None
+        else:
+            graham_undervalued = current_price is not None and current_price < graham
+
+        record: Dict[str, object] = {
             "Ticker": ticker,
             "Current Price": current_price,
+            "RSI": metrics.get("RSI"),
             "P/E Ratio": metrics.get("P/E Ratio"),
             "P/S Ratio": metrics.get("P/S Ratio"),
             "Market Cap": metrics.get("Market Cap"),
             "Buy Zone": current_price * 0.8 if current_price is not None else None,
             "Target Price": target_price,
-            "Upside %": (
-                (target_price - current_price) / current_price
-                if target_price is not None and current_price not in [None, 0]
-                else None
-            ),
+            "Graham Undervalued": graham_undervalued,
+            "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
             "EPS Growth %": metrics.get("EPS Growth %"),
             "Backlog Growth %": None,
             "Gross Margin %": metrics.get("Gross Margin %"),
             "Net Cash Ratio": metrics.get("Net Cash Ratio"),
         }
+        record["Investment Score"] = compute_investment_score(record)
         records.append(record)
 
     return records
+
+
+MASTER_COLUMNS = ["Pillar"] + COLUMNS
+
+
+def write_master_sheet(
+    workbook: Workbook,
+    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
+) -> None:
+    all_rows: List[Dict[str, object]] = []
+    for context, records in records_by_context:
+        for record in records:
+            row = dict(record)
+            row["Pillar"] = context.pillar
+            all_rows.append(row)
+
+    all_rows.sort(
+        key=lambda r: (r.get("Investment Score") is None, -(r.get("Investment Score") or 0))
+    )
+
+    if "Investment Master" in workbook.sheetnames:
+        sheet = workbook["Investment Master"]
+    else:
+        sheet = workbook.create_sheet(title="Investment Master", index=1)
+
+    for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
+        sheet.cell(row=1, column=col_idx, value=header)
+
+    for row_idx, row in enumerate(all_rows, start=2):
+        for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
+            sheet.cell(row=row_idx, column=col_idx, value=row.get(header))
 
 
 def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Dict[str, Optional[float]]]) -> None:
@@ -376,7 +586,7 @@ def build_summary(records_by_context: List[Tuple[TickerContext, List[Dict[str, O
 
     data_frame = pd.DataFrame(all_records)
     data_frame = data_frame.sort_values(by=["Upside %", "Ticker"], ascending=[False, True], na_position="last")
-    top_candidates = data_frame.head(15)[
+    top_candidates = data_frame.head(5)[
         ["Sector", "Pillar", "Ticker", "Upside %", "Revenue Growth %", "EPS Growth %", "Gross Margin %", "Net Cash Ratio"]
     ].to_dict("records")
 
@@ -388,72 +598,32 @@ def build_summary(records_by_context: List[Tuple[TickerContext, List[Dict[str, O
     }
 
 
-def build_fallback_review(summary: Dict[str, object], date_stamp: str, sector: str) -> str:
-    lines = [
-        f"Ticker review for {sector} - {date_stamp}",
-        "",
-        f"Total tickers reviewed: {summary.get('total_tickers', 0)}",
-        "",
-        "Top candidates by analyst upside:",
-    ]
-
-    for candidate in summary.get("top_candidates", [])[:10]:
-        lines.append(
-            "- {ticker} | {pillar} | upside {upside} | rev {rev} | eps {eps} | gm {gm} | cash {cash}".format(
-                ticker=candidate.get("Ticker", "n/a"),
-                pillar=candidate.get("Pillar", "n/a"),
-                upside=format_metric(candidate.get("Upside %"), "%"),
-                rev=format_metric(candidate.get("Revenue Growth %"), "%"),
-                eps=format_metric(candidate.get("EPS Growth %"), "%"),
-                gm=format_metric(candidate.get("Gross Margin %"), "%"),
-                cash=format_metric(candidate.get("Net Cash Ratio")),
-            )
-        )
-
-    lines.extend(
-        [
-            "",
-            "Note: Set OPENAI_API_KEY to generate a full ChatGPT review.",
-        ]
-    )
-    return "\n".join(lines)
-
-
-def build_chatgpt_prompt(summary: Dict[str, object], date_stamp: str, sector: str) -> str:
-    return (
-        "You are reviewing a daily investment research export. "
-        "Return a concise text summary with: 1) strongest current names, 2) weaker names to avoid, "
-        "3) 10-20 additional tickers to research, grouped by pillar, with one-line reasons. "
-        "Do not mention that you are an AI model. Focus on public companies only. "
-        f"Sector: {sector}. Data date: {date_stamp}. "
-        f"Structured data: {json.dumps(summary.get('all_records', []), default=str)}"
-    )
-
-
-def generate_openai_review(summary: Dict[str, object], date_stamp: str, sector: str) -> Optional[str]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
-    try:
-        import importlib
-
-        openai_module = importlib.import_module("openai")
-        OpenAI = getattr(openai_module, "OpenAI")
-    except Exception:
-        return None
-
-    client = OpenAI(api_key=api_key)
-    prompt = build_chatgpt_prompt(summary, date_stamp, sector)
-    response = client.chat.completions.create(
-        model=DEFAULT_OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": "You are a buy-side investment research assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.2,
-    )
-    return response.choices[0].message.content or ""
+# Claude ticker review — commented out to avoid API usage costs.
+# Uncomment this function and the call site in run() to re-enable.
+#
+# def generate_claude_ticker_review(summary: Dict[str, object], date_stamp: str, sector: str) -> Optional[str]:
+#     api_key = os.getenv("ANTHROPIC_API_KEY")
+#     if not api_key:
+#         return None
+#
+#     try:
+#         import anthropic
+#     except Exception:
+#         return None
+#
+#     client = anthropic.Anthropic(api_key=api_key)
+#     prompt = (
+#         f"Sector: {sector}. Data date: {date_stamp}. "
+#         f"Structured data: {json.dumps(summary.get('all_records', []), default=str)}. "
+#         "Given this data, use deep research to assess similar stocks and please provide 5 (Max) tickers to review."
+#     )
+#     response = client.messages.create(
+#         model="claude-sonnet-4-6",
+#         max_tokens=512,
+#         system="You are a buy-side investment research assistant.",
+#         messages=[{"role": "user", "content": prompt}],
+#     )
+#     return next((block.text for block in response.content if block.type == "text"), None)
 
 
 def write_text(path: Path, content: str) -> None:
@@ -498,21 +668,21 @@ def run(api_key: Optional[str]) -> Dict[str, object]:
             write_records_to_sheet(workbook, sheet_name, records)
             records_by_context.append((context, records))
 
+        write_master_sheet(workbook, records_by_context)
+
         daily_workbook_path = sector_stock_data_dir(sector) / f"{DAILY_WORKBOOK_PREFIX}_{date_stamp}.xlsx"
         workbook.save(daily_workbook_path)
         workbook.close()
 
-        summary = build_summary(records_by_context)
-        review_text = generate_openai_review(summary, date_stamp, sector)
-        if not review_text:
-            review_text = build_fallback_review(summary, date_stamp, sector)
-
-        review_path = sector_ticker_review_dir(sector) / f"{DAILY_REVIEW_PREFIX}_{date_stamp}.txt"
-        write_text(review_path, review_text)
+        # Claude ticker review disabled — uncomment to re-enable once generate_claude_ticker_review is restored.
+        # summary = build_summary(records_by_context)
+        # ticker_review_text = generate_claude_ticker_review(summary, date_stamp, sector)
+        # if ticker_review_text:
+        #     ticker_review_path = sector_ticker_review_dir(sector) / f"{TICKER_REVIEW_PREFIX}_{date_stamp}.txt"
+        #     write_text(ticker_review_path, ticker_review_text)
 
         outputs["sectors"][sector] = {
             "daily_workbook": str(daily_workbook_path),
-            "review_text": str(review_path),
         }
 
     return outputs

@@ -11,22 +11,22 @@ pip install -r requirements.txt
 ## 2. Get your FMP API key
 
 Sign up at https://financialmodelingprep.com/ and obtain an API key from your account dashboard.
-
-Free tier: 250 requests/day
-Paid tiers: Higher limits
+- Free tier: 250 requests/day
+- Paid tiers: Higher limits (recommended — the engine makes several calls per ticker)
 
 ## 3. Configure your API key
 
-Option A: Create `.env` file (recommended)
+Option A: Set directly for the current session
+
+```powershell
+$env:FMP_API_KEY = "your_fmp_key_here"
+```
+
+Option B: Load from a `.env` file
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env and replace "your_fmp_api_key_here" with your actual key
-```
-
-Load it in your session:
-
-```powershell
+# Edit .env and fill in your FMP key
 Get-Content .env | ForEach-Object {
     if ($_ -match '(\w+)=(.*)') {
         [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
@@ -34,19 +34,9 @@ Get-Content .env | ForEach-Object {
 }
 ```
 
-Option B: Set it directly
-
-```powershell
-$env:FMP_API_KEY = "your_actual_key_here"
-# or
-$env:FMP = "your_actual_key_here"
-```
-
 ## 4. Configure tickers
 
-Edit `investment-engine/Ticker-Master.json` to add or remove tickers per pillar.
-
-Default config includes the current AI pillar universe, and the master file is where future non-AI sectors will be added.
+Edit `investment-engine/Ticker-Master.json` to add or remove tickers per pillar. The master file drives everything — per-sector `pillar_tickers.json` files are kept in sync automatically on every run.
 
 ## 5. Run the engine
 
@@ -54,58 +44,62 @@ Default config includes the current AI pillar universe, and the master file is w
 python investment-engine/engine/data_engine.py
 ```
 
-The script will:
+The engine will:
 
 1. Read tickers from `investment-engine/Ticker-Master.json`
-2. Fetch current price, RSI, ratios, growth metrics, and analyst target price from FMP
-3. Calculate Buy Zone, Upside %, and Net Cash Ratio
-4. Write `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx` with one tab per pillar
-5. Generate `investment-engine/sector/<SECTOR>/ticker-review/ticker_reviews_MMDDYYYY.txt` via ChatGPT (or fallback if `CHATGPT` is not set)
+2. Fetch price, RSI, ratios, growth metrics, and balance sheet data from FMP
+3. Compute **Target Price** from Forward EPS × Pillar P/E multiple (TTM EPS as fallback)
+4. Compute **Graham Number** and flag undervalued stocks in the `Graham Undervalued` column
+5. Compute **Investment Score** (0–100 weighted composite) for every ticker
+6. Write `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx` with one tab per pillar
 
 ## 6. Review the workbook
 
 Open `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`:
 
-- **Pillar Map** tab: Maps pillar names to sheet names (for Excel's 31-char limit)
-- **AI [Sub-pillar]** tabs: Investment data by pillar
+- **Pillar Map** tab: Maps pillar names to their shortened sheet names (Excel's 31-char limit)
+- **AI [Sub-pillar]** tabs: Full scored dataset for that pillar
 
-Columns to note:
+Key columns to note:
 
-- **RSI**: Pulled from FMP technical indicators (`periodLength=10`, `timeframe=1day`)
-- **Target Price**: Populated from FMP analyst consensus — used to calculate Upside %
-- **Backlog Growth %**: Not auto-populated; fill in from your own research as needed
+| Column | Notes |
+|---|---|
+| **Investment Score** | 0–100 composite. Higher = more attractive. Missing metrics are excluded and weights rescaled. |
+| **Target Price** | Forward EPS × Pillar P/E multiple. Logs a warning to console if EPS is unavailable. |
+| **Graham Undervalued** | `True` if Current Price < Graham Number. `None` if Book Value or EPS data is missing. |
+| **Upside %** | `((Target Price − Current Price) / Current Price) × 100` |
+| **RSI** | FMP technical indicator, period 10, 1-day timeframe |
+| **Backlog Growth %** | Not auto-populated — fill in from your own research as needed |
 
 ## 7. Set up automation (optional)
 
 To run on a schedule via GitHub Actions:
 
 1. Push your repo to GitHub
-2. Add your FMP API key as a repository secret:
-   - Go to Settings → Secrets and variables → Actions
-    - Create `FMP` with your actual key value
-3. Add `CHATGPT` if you want the daily ChatGPT review file to be generated from the API instead of the deterministic fallback
-4. The workflow runs daily at 12:00 UTC
-   - Manual trigger available: Actions tab → "Daily Investment Engine Refresh" → "Run workflow"
+2. Go to **Settings → Secrets and variables → Actions** and add:
+   - `FMP` — your FMP API key
+3. The workflow runs daily at 12:00 UTC
+   - Manual trigger: **Actions tab → "Daily Investment Engine Refresh" → "Run workflow"**
 
 ## Troubleshooting
 
-**"FMP_API_KEY not set"**
-- Verify your `.env` file exists and is formatted correctly
-- Or set `$env:FMP_API_KEY` before running the script
+**`[WARN] Target Price unavailable for {TICKER} — missing EPS data`**
+- The ticker has no forward EPS estimate, earnings estimate, or TTM EPS available from FMP.
+- Target Price and Upside % will be `None` for that row.
 
-**"Ticker not found"**
-- Check spelling (must match FMP's ticker format, e.g., "NVDA" not "Nvidia")
-- Some tickers may not have all metrics available
+**`FMP_API_KEY not set`**
+- The engine will still run but all FMP fields will be empty. Set the key before running.
+
+**Ticker not found / empty row**
+- Check spelling — must match FMP's ticker format exactly (e.g., `NVDA` not `Nvidia`)
+- Some tickers may not have all metrics available from FMP
+
+**Adding a new pillar**
+- Add it directly to `investment-engine/Ticker-Master.json` under the appropriate sector key. The engine creates the required directories automatically on its next run.
 
 **Excel warnings on first run**
-- These are benign and won't appear after sheet names are normalized
+- Benign — related to sheet name normalization and will not recur
 
-**No ChatGPT review file**
-- The workflow will still generate a fallback ticker review if `CHATGPT` is not set
+---
 
-## Next steps
-
-1. Add more tickers to `pillar_tickers.json`
-2. Create additional pillars (e.g., Healthcare, ESG) using `python scaffold_pillar.py Healthcare`
-3. Extend the engine with custom scoring logic in `run_ai_engine.py`
-4. Export workbook data to ChatGPT or other tools for analysis
+> **Claude ticker review** is currently disabled. The logic is preserved in `data_engine.py` (commented out) and can be re-enabled by uncommenting `generate_claude_ticker_review` and its call site in `run()`, then adding `ANTHROPIC_API_KEY` as a repository secret and restoring it to the workflow `env` block.

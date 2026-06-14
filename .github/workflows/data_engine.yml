@@ -27,7 +27,6 @@ jobs:
       - name: Refresh workbook
         env:
           FMP_API_KEY: ${{ secrets.FMP }}
-          OPENAI_API_KEY: ${{ secrets.CHATGPT }}
         run: python investment-engine/engine/data_engine.py
 
       - name: Commit workbook changes
