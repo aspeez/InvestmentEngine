@@ -1,6 +1,6 @@
 # InvestmentEngine
 
-Automated investment research and scoring platform for public companies across the AI Factory ecosystem.
+Automated investment research and scoring platform for public companies.
 
 ## Current scope
 
