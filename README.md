@@ -39,10 +39,9 @@ Each workbook contains the following tabs in order:
 
 | Tab | Description |
 |---|---|
-| **Investment Master** | All tickers across all pillars, sorted by Investment Score descending |
-| **Audit** | Raw Finviz values and intermediate calculations for every ticker — use this to verify any computed column |
-| **Formula Guide** | Documents every calculated column: the formula, how to verify it, and the Investment Score weight breakdown |
-| **AI [Sub-pillar]** | One tab per pillar with full scored data for that pillar (follows the first three fixed tabs) |
+| **Investment Master** | Tickers with sufficient data (≤ 2 null columns), sorted by Investment Score descending |
+| **Speculative Investments** | Tickers with more than 2 null columns — less data available, interpret with caution |
+| **AI [Sub-pillar]** | One tab per pillar with full scored data for that pillar |
 
 ### Pillars
 
@@ -66,7 +65,7 @@ Each workbook contains the following tabs in order:
 - AI Security
 - AI Compute Chips
 
-### Column layout (Pillar tabs and Investment Master)
+### Column layout
 
 | Column | Source |
 |---|---|
@@ -75,13 +74,13 @@ Each workbook contains the following tabs in order:
 | RSI | Finviz `Relative Strength Index (14)` |
 | P/E Ratio | Finviz `P/E` |
 | P/S Ratio | Finviz `P/S` |
-| Market Cap | Finviz `Market Cap` (converted from millions) |
+| Market Cap | Finviz `Market Cap` (converted from millions to full dollars) |
 | Buy Zone | Calculated — `Current Price × 0.80` |
 | Target Price | Finviz `Target Price` (analyst consensus) |
 | Graham Undervalued | Calculated — `True` if `Current Price < Graham Number`, `None` if data is missing |
 | Upside % | Calculated — `((Target Price − Current Price) / Current Price) × 100` |
-| Revenue Growth % | Finviz `Sales Growth Q/Q` (5Y fallback) |
-| EPS Growth % | Finviz `EPS Growth Q/Q` (5Y fallback) |
+| Revenue Growth % | Finviz `Sales Growth Q/Q` (5Y fallback if Q/Q unavailable) |
+| EPS Growth % | Finviz `EPS Growth Q/Q` (5Y fallback if Q/Q unavailable) |
 | Gross Margin % | Finviz `Gross Margin` |
 | Net Profit Margin % | Finviz `Profit Margin` |
 | Debt/Equity | Finviz `Total Debt/Equity` |
@@ -90,26 +89,6 @@ Each workbook contains the following tabs in order:
 | Institutional Ownership % | Finviz `Institutional Ownership` |
 | Analyst Recom | Finviz `Analyst Recom` (1.0 = Strong Buy, 5.0 = Strong Sell) |
 | Investment Score | Calculated — weighted 0–100 composite score (see below) |
-
-### Audit tab columns
-
-The Audit tab exposes every raw Finviz value and intermediate calculation so you can trace and verify any number end-to-end.
-
-| Column group | Columns |
-|---|---|
-| Identifiers | Pillar, Ticker |
-| Graham inputs | EPS (ttm), Book Value Per Share, Graham Number, Graham Undervalued |
-| Market data | Current Price, Market Cap, Target Price (Analyst) |
-| Growth inputs | Rev Growth Q/Q %, Rev Growth 5Y %, EPS Growth Q/Q %, EPS Growth 5Y % |
-| Ratio inputs | P/E Ratio, P/S Ratio, RSI |
-| Computed | Buy Zone, Upside % |
-| Quality | Gross Margin %, Net Profit Margin %, Debt/Equity |
-| Context | Beta, Insider Ownership %, Institutional Ownership %, Analyst Recom |
-| Score | Investment Score |
-
-### Formula Guide tab
-
-Documents each calculated column with its formula, step-by-step verification instructions, and data source notes. Also includes the full Investment Score weight and normalization table.
 
 ## Investment Score
 
@@ -124,7 +103,7 @@ A weighted 0–100 ranking designed to identify the most attractive investment o
 | **Financial Quality (25%)** | Gross Margin % | 10% |
 | | Net Profit Margin % | 10% |
 | | Debt/Equity | 5% |
-| **Valuation (20%)** | P/S Ratio | 10% |
+| **Valuation (25%)** | P/S Ratio | 10% |
 | | Upside % | 10% |
 | | P/E Ratio | 5% |
 | **Entry Timing (20%)** | RSI | 10% |
@@ -155,17 +134,19 @@ Both EPS (ttm) and Book Value Per Share (Book/sh) are sourced from Finviz.
 
 `Graham Undervalued` is an informational boolean column only — it does not feed into the Investment Score. It is set to `None` (not `False`) when EPS or Book Value Per Share data is unavailable or non-positive.
 
-The Graham Number intermediate value is visible in the Audit tab for verification.
+## Speculative Investments tab
+
+Tickers with more than 2 null values across their data columns are moved to the Speculative Investments tab rather than the Investment Master. This keeps the master list limited to stocks with enough data to produce a reliable Investment Score. Speculative tickers still appear in their individual pillar tabs and still receive an Investment Score if enough metrics are present — they are only excluded from the Investment Master view.
 
 ## Finviz data source
 
-The engine calls the Finviz Elite export endpoint once per ticker:
+The engine makes a single bulk export call with all tickers:
 
 ```
-GET https://elite.finviz.com/export?v=151&t={TICKER}&c={COLUMNS}&auth={TOKEN}
+GET https://elite.finviz.com/export?v=151&t={TICKER1,TICKER2,...}&c={COLUMNS}&auth={TOKEN}
 ```
 
-Returns a CSV with one data row per ticker. Column codes used:
+Returns a CSV with one row per ticker. Column codes used:
 
 | Code | Field |
 |---|---|
@@ -229,6 +210,7 @@ Required repository secrets:
 Add secrets in GitHub: **Settings → Secrets and variables → Actions → New repository secret**
 
 On each run the workflow:
-1. Fetches market data from Finviz and scores all tickers
-2. Writes `investment_data_MMDDYYYY.xlsx` per sector with all scored columns plus Audit and Formula Guide tabs
-3. Commits and pushes any changed files
+1. Makes a single bulk Finviz export call for all tickers
+2. Scores all tickers and splits them into Investment Master and Speculative Investments
+3. Writes `investment_data_MMDDYYYY.xlsx` per sector
+4. Commits and pushes any changed files

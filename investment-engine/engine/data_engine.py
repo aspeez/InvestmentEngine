@@ -132,10 +132,6 @@ class FinvizClient:
             "Insider Ownership %": p(row.get("Insider Ownership")),
             "Institutional Ownership %": p(row.get("Institutional Ownership")),
             "Analyst Recom": p(row.get("Analyst Recom")),
-            "_rev_growth_qq": rev_growth_qq,
-            "_rev_growth_5y": rev_growth_5y,
-            "_eps_growth_qq": eps_growth_qq,
-            "_eps_growth_5y": eps_growth_5y,
         }
 
     def get_all_metrics(self, tickers: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
@@ -415,14 +411,6 @@ def fetch_records_for_pillar(
             "Insider Ownership %": metrics.get("Insider Ownership %"),
             "Institutional Ownership %": metrics.get("Institutional Ownership %"),
             "Analyst Recom": metrics.get("Analyst Recom"),
-            # Audit fields
-            "_audit_eps": eps,
-            "_audit_book_value_per_share": bvps,
-            "_audit_graham_number": graham,
-            "_audit_rev_growth_qq": metrics.get("_rev_growth_qq"),
-            "_audit_rev_growth_5y": metrics.get("_rev_growth_5y"),
-            "_audit_eps_growth_qq": metrics.get("_eps_growth_qq"),
-            "_audit_eps_growth_5y": metrics.get("_eps_growth_5y"),
         }
         record["Investment Score"] = compute_investment_score(record)
         records.append(record)
@@ -433,208 +421,61 @@ def fetch_records_for_pillar(
 MASTER_COLUMNS = ["Pillar"] + COLUMNS
 
 
-def write_master_sheet(
-    workbook: Workbook,
-    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
-) -> None:
-    all_rows: List[Dict[str, object]] = []
-    for context, records in records_by_context:
-        for record in records:
-            row = dict(record)
-            row["Pillar"] = context.pillar
-            all_rows.append(row)
-
-    all_rows.sort(
-        key=lambda r: (r.get("Investment Score") is None, -(r.get("Investment Score") or 0))
-    )
-
-    if "Investment Master" in workbook.sheetnames:
-        sheet = workbook["Investment Master"]
-    else:
-        sheet = workbook.create_sheet(title="Investment Master", index=0)
-
-    for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
-        sheet.cell(row=1, column=col_idx, value=header)
-
-    for row_idx, row in enumerate(all_rows, start=2):
-        for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
-            sheet.cell(row=row_idx, column=col_idx, value=_cell_value(row.get(header)))
-
-
-AUDIT_COLUMNS = [
-    "Pillar", "Ticker", "Current Price",
-    "EPS (ttm)", "Book Value Per Share", "Graham Number", "Graham Undervalued",
-    "Market Cap", "Target Price (Analyst)",
-    "Rev Growth Q/Q %", "Rev Growth 5Y %", "EPS Growth Q/Q %", "EPS Growth 5Y %",
-    "P/E Ratio", "P/S Ratio", "RSI",
-    "Buy Zone", "Upside %",
-    "Gross Margin %", "Net Profit Margin %", "Debt/Equity",
-    "Beta", "Insider Ownership %", "Institutional Ownership %", "Analyst Recom",
-    "Investment Score",
-]
-
-
-def write_audit_sheet(
-    workbook: Workbook,
-    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
-) -> None:
-    if "Audit" in workbook.sheetnames:
-        sheet = workbook["Audit"]
-    else:
-        sheet = workbook.create_sheet(title="Audit")
-
-    for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
-        sheet.cell(row=1, column=col_idx, value=header)
-
-    row_idx = 2
-    for context, records in records_by_context:
-        for record in records:
-            audit_row = {
-                "Pillar": context.pillar,
-                "Ticker": record.get("Ticker"),
-                "Current Price": record.get("Current Price"),
-                "EPS (ttm)": record.get("_audit_eps"),
-                "Book Value Per Share": record.get("_audit_book_value_per_share"),
-                "Graham Number": record.get("_audit_graham_number"),
-                "Graham Undervalued": record.get("Graham Undervalued"),
-                "Market Cap": record.get("Market Cap"),
-                "Target Price (Analyst)": record.get("Target Price"),
-                "Rev Growth Q/Q %": record.get("_audit_rev_growth_qq"),
-                "Rev Growth 5Y %": record.get("_audit_rev_growth_5y"),
-                "EPS Growth Q/Q %": record.get("_audit_eps_growth_qq"),
-                "EPS Growth 5Y %": record.get("_audit_eps_growth_5y"),
-                "P/E Ratio": record.get("P/E Ratio"),
-                "P/S Ratio": record.get("P/S Ratio"),
-                "RSI": record.get("RSI"),
-                "Buy Zone": record.get("Buy Zone"),
-                "Upside %": record.get("Upside %"),
-                "Gross Margin %": record.get("Gross Margin %"),
-                "Net Profit Margin %": record.get("Net Profit Margin %"),
-                "Debt/Equity": record.get("Debt/Equity"),
-                "Beta": record.get("Beta"),
-                "Insider Ownership %": record.get("Insider Ownership %"),
-                "Institutional Ownership %": record.get("Institutional Ownership %"),
-                "Analyst Recom": record.get("Analyst Recom"),
-                "Investment Score": record.get("Investment Score"),
-            }
-            for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
-                sheet.cell(row=row_idx, column=col_idx, value=_cell_value(audit_row.get(header)))
-            row_idx += 1
-
-
-def write_formula_guide_sheet(workbook: Workbook) -> None:
-    if "Formula Guide" in workbook.sheetnames:
-        sheet = workbook["Formula Guide"]
-    else:
-        sheet = workbook.create_sheet(title="Formula Guide")
-
-    headers = ["Column", "Formula", "How to Verify", "Notes"]
-    for col_idx, header in enumerate(headers, start=1):
-        sheet.cell(row=1, column=col_idx, value=header)
-
-    formulas = [
-        (
-            "Buy Zone",
-            "Current Price × 0.80",
-            "Take Current Price and multiply by 0.80. Result should match Buy Zone.",
-            "Represents a 20% discount to today's price — a disciplined entry target if the stock pulls back.",
-        ),
-        (
-            "Graham Number",
-            "√(22.5 × EPS (ttm) × Book Value Per Share)",
-            "Multiply 22.5 × EPS × Book/sh (all in Audit tab), then take the square root.",
-            "Only valid when both EPS and Book Value Per Share are positive. Classic Benjamin Graham intrinsic value estimate.",
-        ),
-        (
-            "Graham Undervalued",
-            "Current Price < Graham Number",
-            "Compare Current Price to Graham Number in the Audit tab. TRUE = stock trades below Graham's estimated value.",
-            "Informational only — does not affect Investment Score. None when EPS or Book Value data is unavailable.",
-        ),
-        (
-            "Upside %",
-            "((Target Price − Current Price) / Current Price) × 100",
-            "Subtract Current Price from Target Price, divide by Current Price, multiply by 100.",
-            "Target Price is the analyst consensus from Finviz. Negative Upside % means the consensus sees downside.",
-        ),
-        (
-            "Revenue Growth %",
-            "Sales Growth Q/Q % from Finviz (5Y used as fallback if Q/Q unavailable)",
-            "Check Rev Growth Q/Q % and Rev Growth 5Y % in the Audit tab. The column uses Q/Q when available.",
-            "Sourced from Finviz export field 'Sales Growth Quarter Over Quarter'.",
-        ),
-        (
-            "EPS Growth %",
-            "EPS Growth Q/Q % from Finviz (5Y used as fallback if Q/Q unavailable)",
-            "Check EPS Growth Q/Q % and EPS Growth 5Y % in the Audit tab. The column uses Q/Q when available.",
-            "Sourced from Finviz export field 'EPS Growth Quarter Over Quarter'.",
-        ),
-        (
-            "Gross Margin %",
-            "Gross Margin % sourced directly from Finviz",
-            "Value in column should match Gross Margin field in Finviz screener for the ticker.",
-            "Finviz export field 'Gross Margin'. Expressed as a percentage (e.g. 68.5 = 68.5%).",
-        ),
-        (
-            "Net Profit Margin %",
-            "Net Profit Margin % sourced directly from Finviz",
-            "Value in column should match Profit Margin field in Finviz screener for the ticker.",
-            "Finviz export field 'Profit Margin'. Net income divided by revenue.",
-        ),
-        (
-            "Analyst Recom",
-            "Analyst consensus recommendation score from Finviz (1.0 = Strong Buy, 5.0 = Strong Sell)",
-            "Compare to Analyst Recom field in Finviz screener for the ticker.",
-            "Lower number = more bullish consensus. Score of 1.0 is maximum conviction buy; 5.0 is maximum sell.",
-        ),
-        (
-            "Investment Score",
-            "Weighted composite of 11 metrics, each normalized 0–100, then combined by weight.",
-            "See the component weight table below. Each metric can be traced back to the Audit tab.",
-            "Missing metrics are excluded and the remaining weights are rescaled proportionally.",
-        ),
-    ]
-
-    for row_idx, (col, formula, how_to, notes) in enumerate(formulas, start=2):
-        sheet.cell(row=row_idx, column=1, value=col)
-        sheet.cell(row=row_idx, column=2, value=formula)
-        sheet.cell(row=row_idx, column=3, value=how_to)
-        sheet.cell(row=row_idx, column=4, value=notes)
-
-    score_start = len(formulas) + 4
-    sheet.cell(row=score_start, column=1, value="Investment Score — Component Weights and Normalization")
-    score_start += 1
-
-    score_headers = ["Category", "Metric", "Weight", "Scoring Direction", "Normalization Range"]
-    for col_idx, h in enumerate(score_headers, start=1):
-        sheet.cell(row=score_start, column=col_idx, value=h)
-    score_start += 1
-
-    score_components = [
-        ("Growth (30%)", "Revenue Growth %", "20%", "Higher is better", "-50% to 100%"),
-        ("Growth (30%)", "EPS Growth %", "10%", "Higher is better", "-50% to 100%"),
-        ("Financial Quality (25%)", "Gross Margin %", "10%", "Higher is better", "0% to 100%"),
-        ("Financial Quality (25%)", "Net Profit Margin %", "10%", "Higher is better", "-20% to 40%"),
-        ("Financial Quality (25%)", "Debt/Equity", "5%", "Lower is better", "0 to 3.0 (capped; above 3 = score 0)"),
-        ("Valuation (20%)", "P/S Ratio", "10%", "Lower is better", "0 to 30 (capped; above 30 = score 0)"),
-        ("Valuation (20%)", "Upside %", "10%", "Higher is better", "-30% to 100%"),
-        ("Valuation (20%)", "P/E Ratio", "5%", "Lower is better", "0 to 60 (capped; above 60 or negative = score 0)"),  # noqa
-        ("Entry Timing (20%)", "RSI", "10%", "Lower is better (oversold favored)", "Score 100 at RSI=30, score 0 at RSI=80+"),  # noqa
-        ("Entry Timing (20%)", "Buy Zone Proximity", "5%", "Closer to Buy Zone = higher score", "Score 100 at/below Buy Zone, score 0 when 25%+ above it"),  # noqa
-        ("Entry Timing (20%)", "Analyst Recom", "5%", "Lower is better (1=Strong Buy)", "1.0 (Strong Buy) → score 100; 5.0 (Strong Sell) → score 0"),  # noqa
-    ]
-
-    for comp in score_components:
-        for col_idx, val in enumerate(comp, start=1):
-            sheet.cell(row=score_start, column=col_idx, value=val)
-        score_start += 1
-
-
 def _cell_value(value: object) -> object:
     """Round floats to 2 decimal places for clean cell display."""
     if isinstance(value, float):
         return round(value, 2)
     return value
+
+
+# Columns checked when deciding if a ticker is speculative (all data columns except Ticker)
+_NULL_CHECK_COLUMNS = [c for c in COLUMNS if c != "Ticker"]
+_SPECULATIVE_NULL_THRESHOLD = 2  # more than this many nulls → Speculative
+
+
+def _null_count(record: Dict) -> int:
+    return sum(1 for col in _NULL_CHECK_COLUMNS if record.get(col) is None)
+
+
+def _split_records(
+    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
+) -> Tuple[List[Dict], List[Dict]]:
+    """Return (core_rows, speculative_rows) with Pillar injected into each row."""
+    core: List[Dict] = []
+    speculative: List[Dict] = []
+    for context, records in records_by_context:
+        for record in records:
+            row = dict(record)
+            row["Pillar"] = context.pillar
+            if _null_count(row) > _SPECULATIVE_NULL_THRESHOLD:
+                speculative.append(row)
+            else:
+                core.append(row)
+    return core, speculative
+
+
+def _write_rows_to_sheet(sheet, rows: List[Dict]) -> None:
+    for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
+        sheet.cell(row=1, column=col_idx, value=header)
+    for row_idx, row in enumerate(rows, start=2):
+        for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
+            sheet.cell(row=row_idx, column=col_idx, value=_cell_value(row.get(header)))
+
+
+def write_master_sheet(
+    workbook: Workbook,
+    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
+) -> None:
+    core, speculative = _split_records(records_by_context)
+
+    core.sort(key=lambda r: (r.get("Investment Score") is None, -(r.get("Investment Score") or 0)))
+
+    sheet = workbook.create_sheet(title="Investment Master", index=0)
+    _write_rows_to_sheet(sheet, core)
+
+    spec_sheet = workbook.create_sheet(title="Speculative Investments")
+    speculative.sort(key=lambda r: (r.get("Investment Score") is None, -(r.get("Investment Score") or 0)))
+    _write_rows_to_sheet(spec_sheet, speculative)
 
 
 def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Dict[str, Optional[float]]]) -> None:
@@ -737,8 +578,6 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
             records_by_context.append((context, records))
 
         write_master_sheet(workbook, records_by_context)
-        write_audit_sheet(workbook, records_by_context)
-        write_formula_guide_sheet(workbook)
 
         for context, records in records_by_context:
             sheet_name = sheet_name_for_pillar(context.pillar)

@@ -49,11 +49,12 @@ python investment-engine/engine/data_engine.py
 The engine will:
 
 1. Read tickers from `investment-engine/Ticker-Master.json`
-2. Fetch price, RSI, ratios, growth, margin, and ownership data from Finviz (one call per ticker)
+2. Make a single bulk Finviz export call for all tickers at once
 3. Compute **Graham Number** and flag undervalued stocks in the `Graham Undervalued` column
 4. Use the Finviz analyst consensus **Target Price** to compute **Upside %**
 5. Compute **Investment Score** (0–100 weighted composite) for every ticker
-6. Write `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`
+6. Split tickers: ≤ 2 null columns → Investment Master; > 2 null columns → Speculative Investments
+7. Write `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`
 
 ## 6. Review the workbook
 
@@ -61,10 +62,9 @@ Open `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx
 
 | Tab | What's in it |
 |---|---|
-| **Investment Master** | All tickers across all pillars sorted by Investment Score descending |
-| **Audit** | Every raw Finviz value and intermediate calculation — use this to verify any computed number |
-| **Formula Guide** | Each formula written out plainly with verification steps and the full Investment Score weight table |
-| **AI [Sub-pillar]** | Full scored dataset for that pillar |
+| **Investment Master** | Tickers with sufficient data, sorted by Investment Score descending |
+| **Speculative Investments** | Tickers with more than 2 null columns — less data, interpret with caution |
+| **AI [Sub-pillar]** | Full scored dataset for that pillar (all tickers, including speculative) |
 
 Key columns to note:
 
@@ -75,8 +75,6 @@ Key columns to note:
 | **Graham Undervalued** | `True` if Current Price < Graham Number. `None` if EPS or Book Value data is missing. |
 | **Upside %** | `((Target Price − Current Price) / Current Price) × 100` |
 | **Analyst Recom** | 1.0 = Strong Buy, 5.0 = Strong Sell (Finviz consensus score) |
-
-**To verify any number:** open the Audit tab, find the ticker's row, and check the raw inputs. The Formula Guide tab shows exactly how to reproduce each calculation from those inputs.
 
 ## 7. Set up automation (optional)
 
@@ -96,8 +94,8 @@ To run on a schedule via GitHub Actions:
 **`[WARN] Target Price unavailable for {TICKER}`**
 - Finviz has no analyst consensus target for that ticker. Upside % will be `None`.
 
-**`[WARN] Finviz returned no data for {TICKER}`**
-- Check that the ticker symbol is valid in Finviz (must match exactly, e.g. `NVDA` not `Nvidia`).
+**`[WARN] Finviz returned no data for: {TICKERS}`**
+- Those ticker symbols were not found in Finviz. Check spelling — must match Finviz format exactly (e.g. `NVDA` not `Nvidia`).
 
 **Adding a new pillar**
 - Add it directly to `investment-engine/Ticker-Master.json` under the appropriate sector key. The engine creates the required directories automatically on its next run.

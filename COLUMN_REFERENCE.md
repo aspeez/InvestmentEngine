@@ -345,7 +345,7 @@ Both EPS and Book/sh are sourced from Finviz.
 | Financial Quality (25%) | Gross Margin % | 10% |
 | | Net Profit Margin % | 10% |
 | | Debt/Equity | 5% |
-| Valuation (20%) | P/S Ratio | 10% |
+| Valuation (25%) | P/S Ratio | 10% |
 | | Upside % | 10% |
 | | P/E Ratio | 5% |
 | Entry Timing (20%) | RSI | 10% |
