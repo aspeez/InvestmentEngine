@@ -103,7 +103,7 @@ class FMPClient:
     def _get(self, endpoint: str, symbol: str, symbol_param: str = "symbol") -> Optional[dict]:
         params = {symbol_param: symbol, "apikey": self.api_key}
         url = f"{FMP_BASE_URL}/{endpoint}"
-        response = self.session.get(url, params=params, timeout=25)
+        response = self.session.get(url, params=params, timeout=10)
         if not response.ok:
             print(f"[WARN] FMP {endpoint} returned {response.status_code} for {symbol}: {response.text[:200]}")
             return None
@@ -128,7 +128,7 @@ class FMPClient:
                 "timeframe": "1day",
                 "apikey": self.api_key,
             },
-            timeout=25,
+            timeout=10,
         )
         if not response.ok:
             print(f"[WARN] FMP technical-indicators/rsi returned {response.status_code} for {symbol}: {response.text[:200]}")
@@ -171,7 +171,12 @@ class FMPClient:
             print("[WARN] FMP ratios-ttm-bulk failed after 3 attempts — P/E, P/S, Gross Margin and TTM EPS will be empty")
             self._ratios_bulk_cache = {}
             return {}
-        payload = response.json()
+        try:
+            payload = response.json()
+        except Exception as exc:
+            print(f"[WARN] FMP ratios-ttm-bulk returned invalid JSON: {exc}")
+            self._ratios_bulk_cache = {}
+            return {}
 
         cache: Dict[str, dict] = {}
         if isinstance(payload, list):
@@ -187,15 +192,17 @@ class FMPClient:
 
     def _get_forward_eps(self, symbol: str) -> Optional[float]:
         # Primary: annual analyst estimates — field is epsAvg
+        analyst_estimates_available = False
         try:
             response = self.session.get(
                 f"{FMP_BASE_URL}/analyst-estimates",
                 params={"symbol": symbol, "period": "annual", "page": 0, "limit": 10, "apikey": self.api_key},
-                timeout=25,
+                timeout=10,
             )
             response.raise_for_status()
             payload = response.json()
-            if isinstance(payload, list):
+            if isinstance(payload, list) and payload:
+                analyst_estimates_available = True
                 for row in payload:
                     if not isinstance(row, dict):
                         continue
@@ -205,12 +212,15 @@ class FMPClient:
         except Exception:
             pass
 
-        # Fallback: earnings endpoint — future quarters have epsActual == null
+        # Fallback: earnings endpoint — only if analyst-estimates returned no data at all
+        if analyst_estimates_available:
+            return None
+
         try:
             response = self.session.get(
                 f"{FMP_BASE_URL}/earnings",
                 params={"symbol": symbol, "apikey": self.api_key},
-                timeout=25,
+                timeout=10,
             )
             response.raise_for_status()
             payload = response.json()
@@ -230,11 +240,15 @@ class FMPClient:
 
     def _get_book_value_per_share(self, symbol: str) -> Optional[float]:
         url = f"{FMP_BASE_URL}/ratios"
-        response = self.session.get(url, params={"symbol": symbol, "apikey": self.api_key}, timeout=25)
+        response = self.session.get(url, params={"symbol": symbol, "apikey": self.api_key}, timeout=10)
         if not response.ok:
             print(f"[WARN] FMP ratios returned {response.status_code} for {symbol}: {response.text[:200]}")
             return None
-        payload = response.json()
+        try:
+            payload = response.json()
+        except Exception as exc:
+            print(f"[WARN] FMP ratios returned invalid JSON for {symbol}: {exc}")
+            return None
         if isinstance(payload, list) and payload:
             return self._to_float(payload[0].get("bookValuePerShare"))
         return None
@@ -246,7 +260,6 @@ class FMPClient:
         market_cap_data = self._get("market-capitalization-batch", ticker, symbol_param="symbols") or {}
         ratios = self._get_ratios_ttm_bulk().get(ticker.upper(), {})
         growth = self._get("financial-growth", ticker) or {}
-        income = self._get("income-statement", ticker) or {}
         balance = self._get("balance-sheet-statement", ticker) or {}
         book_value_per_share = self._get_book_value_per_share(ticker)
         forward_eps = self._get_forward_eps(ticker)
@@ -263,6 +276,8 @@ class FMPClient:
             eps_growth = self._to_float(growth.get("epsdilutedGrowth"))
         gross_margin = self._to_float(ratios.get("grossProfitMarginTTM"))
         if gross_margin is None:
+            # Only call income-statement when ratios-ttm-bulk didn't supply gross margin
+            income = self._get("income-statement", ticker) or {}
             gross_margin = self._to_float(income.get("grossProfitRatio"))
         ttm_eps = self._to_float(ratios.get("epsTTM"))
 
