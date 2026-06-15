@@ -11,8 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-import anthropic
-import pandas as pd
 import requests
 from openpyxl import Workbook
 
@@ -30,7 +28,6 @@ SECTOR_DIR = REPO_ROOT / "sector"
 MASTER_JSON_PATH = REPO_ROOT / "Ticker-Master.json"
 DAILY_WORKBOOK_PREFIX = "investment_data"
 DATE_FORMAT = "%m%d%Y"
-TICKER_REVIEW_PREFIX = "ticker_review"
 
 KNOWN_SHEET_NAMES = {
     "AI Power Generation": "AI Power Gen",
@@ -493,72 +490,150 @@ def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Di
             sheet.cell(row=row_index, column=column_index, value=_cell_value(record.get(header)))
 
 
-def format_metric(value: Optional[float], suffix: str = "") -> str:
+# ── Robinhood watchlist IDs (created in Claude.ai Investment Engine session) ──
+ROBINHOOD_WATCHLISTS = [
+    {
+        "name": "High Conviction",
+        "label": "WL1 — High Conviction 🟢",
+        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
+        "checks": [
+            ("Investment Score", ">=", 70),
+            ("Revenue Growth %", ">=", 20),
+            ("EPS Growth %", ">=", 20),
+            ("Net Profit Margin %", ">=", 10),
+            ("Debt/Equity", "<=", 1.0),
+            ("RSI", "range", 30, 55),
+            ("Upside %", ">=", 20),
+            ("Analyst Recom", "<=", 2.0),
+        ],
+    },
+    {
+        "name": "Pullback Watch",
+        "label": "WL2 — Pullback Watch 🔵",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "checks": [
+            ("Investment Score", ">=", 60),
+            ("Revenue Growth %", ">=", 15),
+            ("EPS Growth %", ">=", 10),
+            ("Net Profit Margin %", ">=", 5),
+            ("Debt/Equity", "<=", 1.5),
+            ("RSI", "range", 30, 50),
+            ("Upside %", ">=", 20),
+            ("Analyst Recom", "<=", 2.5),
+        ],
+    },
+    {
+        "name": "Deep Value",
+        "label": "WL3 — Deep Value 🟡",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "checks": [
+            ("Investment Score", ">=", 50),
+            ("Revenue Growth %", ">=", 10),
+            ("EPS Growth %", ">=", 0),
+            ("Net Profit Margin %", ">", 0),
+            ("Debt/Equity", "<=", 1.0),
+            ("RSI", "<=", 35),
+            ("Upside %", ">=", 15),
+            ("Analyst Recom", "<=", 2.5),
+        ],
+    },
+    {
+        "name": "Pipeline",
+        "label": "WL4 — Pipeline ⚪",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "checks": [
+            ("Investment Score", "range", 50, 60),
+            ("Revenue Growth %", ">=", 15),
+            ("EPS Growth %", ">=", 10),
+            ("Net Profit Margin %", ">=", 5),
+            ("Debt/Equity", "<=", 1.5),
+            # RSI: any — no threshold check
+            ("Upside %", ">=", 15),
+            ("Analyst Recom", "<=", 2.5),
+        ],
+    },
+]
+
+WATCHLIST_FILENAME = "watchlist"
+CONSOLIDATED_CSV_FILENAME = "consolidated"
+
+
+def _passes_check(value: Optional[float], op: str, *args: float) -> bool:
     if value is None:
-        return "n/a"
+        return False
+    if op == ">=":
+        return value >= args[0]
+    if op == ">":
+        return value > args[0]
+    if op == "<=":
+        return value <= args[0]
+    if op == "<":
+        return value < args[0]
+    if op == "range":
+        return args[0] <= value <= args[1]
+    return False
+
+
+def _as_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
     if isinstance(value, float):
-        return f"{value:.2f}{suffix}"
-    return f"{value}{suffix}"
+        return value
+    if isinstance(value, int):
+        return float(value)
+    try:
+        return float(str(value).strip().rstrip("%").replace(",", ""))
+    except (ValueError, AttributeError):
+        return None
 
 
-def build_summary(records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]]) -> Dict[str, object]:
-    all_records: List[Dict[str, object]] = []
-    pillar_counts: Dict[str, int] = {}
+def classify_watchlists(core: List[Dict], speculative: List[Dict]) -> Dict[str, object]:
+    """
+    Apply highest-tier-wins logic across all rows.
+    Returns a summary dict with per-watchlist ticker lists and a count breakdown.
+    """
+    placement: Dict[str, List[Dict]] = {wl["name"]: [] for wl in ROBINHOOD_WATCHLISTS}
+    unqualified: List[str] = []
 
-    for context, records in records_by_context:
-        pillar_counts[context.pillar] = len(records)
-        for record in records:
-            row = dict(record)
-            row["Sector"] = context.sector
-            row["Pillar"] = context.pillar
-            all_records.append(row)
+    for row in core + speculative:
+        placed = False
+        for wl in ROBINHOOD_WATCHLISTS:
+            qualifies = all(
+                _passes_check(_as_float(row.get(col)), op, *args)
+                for col, op, *args in wl["checks"]
+            )
+            if qualifies:
+                placement[wl["name"]].append({
+                    "ticker": row.get("Ticker"),
+                    "pillar": row.get("Pillar"),
+                    "investment_score": _cell_value(row.get("Investment Score")),
+                    "tab": "Investment Master" if row in core else "Speculative Investments",
+                    "list_id": wl["list_id"],
+                    "label": wl["label"],
+                })
+                placed = True
+                break
+        if not placed:
+            unqualified.append(row.get("Ticker", ""))
 
-    if not all_records:
-        return {"total_tickers": 0, "top_candidates": [], "pillar_counts": {}, "all_records": []}
-
-    data_frame = pd.DataFrame(all_records)
-    data_frame = data_frame.sort_values(by=["Upside %", "Ticker"], ascending=[False, True], na_position="last")
-    top_candidates = data_frame.head(5)[
-        ["Sector", "Pillar", "Ticker", "Upside %", "Revenue Growth %", "EPS Growth %", "Gross Margin %"]
-    ].to_dict("records")
+    counts = {wl["name"]: len(placement[wl["name"]]) for wl in ROBINHOOD_WATCHLISTS}
+    print(f"[INFO] Watchlist classification — " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
+    print(f"[INFO] Unqualified tickers: {len(unqualified)}")
 
     return {
-        "total_tickers": int(len(data_frame)),
-        "pillar_counts": pillar_counts,
-        "top_candidates": top_candidates,
-        "all_records": all_records,
+        "watchlists": placement,
+        "counts": counts,
+        "unqualified_count": len(unqualified),
     }
 
 
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-CLAUDE_REVIEW_SYSTEM_PROMPT = (
-    "You are the Investment Engine AI analyst. Your role is to review weekly investment data "
-    "across AI-sector tickers and surface the most actionable opportunities.\n\n"
-    "When you receive ticker data (Investment Master + Speculative Investments combined as CSV), "
-    "you must respond in two clearly separated sections:\n\n"
-    "1. DATA RECEIVED\n"
-    "Confirm the data was received. State how many Investment Master rows and how many "
-    "Speculative rows were included.\n\n"
-    "2. TOP TICKER RECOMMENDATIONS\n"
-    "Return a JSON block — and ONLY a JSON block — under this heading with exactly this shape:\n"
-    "```json\n"
-    "{\n"
-    '  "recommendations": [\n'
-    "    {\n"
-    '      "ticker": "NVDA",\n'
-    '      "pillar": "AI Compute Chips",\n'
-    '      "investment_score": 87.5,\n'
-    '      "rationale": "One sentence max explaining why this ticker was selected."\n'
-    "    }\n"
-    "  ]\n"
-    "}\n"
-    "```\n"
-    "Return a maximum of 5 tickers. Rank them by overall investment attractiveness — "
-    "prioritize high Investment Score, strong upside, positive revenue growth, and RSI below 60. "
-    "Include speculative tickers only if no better core candidates exist."
-)
-
-TICKER_REVIEW_FILENAME = "ticker_review"
+def _save_watchlist_classification(classification: Dict, sector: str, date_stamp: str) -> Path:
+    path = sector_ticker_review_dir(sector) / f"{WATCHLIST_FILENAME}_{date_stamp}.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(classification, fh, indent=2)
+        fh.write("\n")
+    print(f"[INFO] Watchlist classification saved: {path}")
+    return path
 
 
 def _build_consolidated_csv(core: List[Dict], speculative: List[Dict]) -> str:
@@ -574,85 +649,13 @@ def _build_consolidated_csv(core: List[Dict], speculative: List[Dict]) -> str:
 
 
 def _save_consolidated_csv(csv_content: str, sector: str, date_stamp: str) -> Path:
-    path = sector_ticker_review_dir(sector) / f"consolidated_{date_stamp}.csv"
+    path = sector_stock_data_dir(sector) / f"{CONSOLIDATED_CSV_FILENAME}_{date_stamp}.csv"
     path.write_text(csv_content, encoding="utf-8")
     print(f"[INFO] Consolidated CSV saved: {path}")
     return path
 
 
-def generate_claude_ticker_review(
-    csv_content: str,
-    date_stamp: str,
-    sector: str,
-    api_key: str,
-    core_count: int,
-    speculative_count: int,
-) -> Optional[Dict]:
-    """
-    POST Investment Master + Speculative data to Claude and parse the response.
-    Returns a dict with keys: acknowledgment (str), recommendations (list).
-    """
-    client = anthropic.Anthropic(api_key=api_key)
-
-    user_message = (
-        f"Here is the weekly investment data for sector '{sector}' as of {date_stamp}.\n"
-        f"It contains {core_count} Investment Master rows and {speculative_count} Speculative rows.\n\n"
-        f"```csv\n{csv_content}```"
-    )
-
-    try:
-        message = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=1024,
-            system=CLAUDE_REVIEW_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-    except Exception as exc:
-        print(f"[WARN] Claude API call failed: {exc}")
-        return None
-
-    response_text = message.content[0].text if message.content else ""
-    print(f"[INFO] Claude ticker review response received ({len(response_text)} chars)")
-
-    # Parse the two sections out of the response
-    acknowledgment = ""
-    recommendations: List[Dict] = []
-
-    # Split on the "TOP TICKER RECOMMENDATIONS" heading
-    parts = response_text.split("2. TOP TICKER RECOMMENDATIONS", 1)
-    if parts:
-        ack_section = parts[0].replace("1. DATA RECEIVED", "").strip()
-        acknowledgment = ack_section
-
-    if len(parts) > 1:
-        rec_section = parts[1]
-        # Extract the JSON block
-        json_start = rec_section.find("```json")
-        json_end = rec_section.find("```", json_start + 7)
-        if json_start != -1 and json_end != -1:
-            json_str = rec_section[json_start + 7:json_end].strip()
-            try:
-                parsed = json.loads(json_str)
-                recommendations = parsed.get("recommendations", [])
-            except json.JSONDecodeError as exc:
-                print(f"[WARN] Could not parse Claude recommendations JSON: {exc}")
-
-    print(f"[INFO] Acknowledgment: {acknowledgment[:200]}")
-    print(f"[INFO] Recommendations received: {len(recommendations)} tickers")
-
-    return {"acknowledgment": acknowledgment, "recommendations": recommendations}
-
-
-def _save_ticker_review(review: Dict, sector: str, date_stamp: str) -> Path:
-    path = sector_ticker_review_dir(sector) / f"{TICKER_REVIEW_FILENAME}_{date_stamp}.json"
-    with path.open("w", encoding="utf-8") as fh:
-        json.dump(review, fh, indent=2)
-        fh.write("\n")
-    print(f"[INFO] Ticker review saved: {path}")
-    return path
-
-
-def run(auth_token: Optional[str], anthropic_api_key: Optional[str] = None) -> Dict[str, object]:
+def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
     master_config = load_master_config()
     sync_master_files(master_config)
@@ -705,27 +708,19 @@ def run(auth_token: Optional[str], anthropic_api_key: Optional[str] = None) -> D
 
         sector_output: Dict[str, object] = {"daily_workbook": str(daily_workbook_path)}
 
-        # Claude ticker review — consolidate Investment Master + Speculative into CSV,
-        # POST to Claude API, save acknowledgment and top-5 recommendations.
-        if anthropic_api_key:
-            core, speculative = _split_records(records_by_context)
-            csv_content = _build_consolidated_csv(core, speculative)
-            _save_consolidated_csv(csv_content, sector, date_stamp)
+        # Export consolidated CSV and run watchlist classification.
+        # Both files are committed to the repo so Claude Code can pick them up
+        # in the interactive review session (Steps 4-8).
+        core, speculative = _split_records(records_by_context)
 
-            review = generate_claude_ticker_review(
-                csv_content=csv_content,
-                date_stamp=date_stamp,
-                sector=sector,
-                api_key=anthropic_api_key,
-                core_count=len(core),
-                speculative_count=len(speculative),
-            )
-            if review:
-                review_path = _save_ticker_review(review, sector, date_stamp)
-                sector_output["ticker_review"] = str(review_path)
-                sector_output["recommendations"] = review.get("recommendations", [])
-        else:
-            print(f"[WARN] ANTHROPIC_API_KEY not set — skipping Claude ticker review for '{sector}'")
+        csv_content = _build_consolidated_csv(core, speculative)
+        csv_path = _save_consolidated_csv(csv_content, sector, date_stamp)
+        sector_output["consolidated_csv"] = str(csv_path)
+
+        classification = classify_watchlists(core, speculative)
+        watchlist_path = _save_watchlist_classification(classification, sector, date_stamp)
+        sector_output["watchlist_classification"] = str(watchlist_path)
+        sector_output["watchlist_counts"] = classification["counts"]
 
         outputs["sectors"][sector] = sector_output
 
@@ -743,10 +738,7 @@ def main() -> None:
     auth_token = args.auth_token or os.getenv("FINVIZ")
     if not auth_token:
         print("[WARN] FINVIZ not set — all Finviz fields will be empty")
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not anthropic_api_key:
-        print("[WARN] ANTHROPIC_API_KEY not set — Claude ticker review will be skipped")
-    outputs = run(auth_token=auth_token, anthropic_api_key=anthropic_api_key)
+    outputs = run(auth_token=auth_token)
     print(json.dumps(outputs, indent=2))
 
 

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   refresh:
@@ -27,7 +28,6 @@ jobs:
       - name: Refresh workbook
         env:
           FINVIZ: ${{ secrets.FINVIZ }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python investment-engine/engine/data_engine.py
 
       - name: Commit workbook changes
@@ -37,3 +37,43 @@ jobs:
           git add investment-engine/Ticker-Master.json investment-engine/sector
           git diff --cached --quiet || git commit -m "chore: refresh investment engine outputs"
           git push
+
+      - name: Ensure investment-review label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "investment-review" \
+            --description "Weekly Investment Engine Phase 2 trigger" \
+            --color "0075ca" \
+            2>/dev/null || true
+
+      - name: Create Phase 2 trigger issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date +%m%d%Y)
+          DISPLAY_DATE=$(date +"%B %d, %Y")
+          gh issue create \
+            --title "Investment Engine — Phase 1 Complete [$DISPLAY_DATE]" \
+            --label "investment-review" \
+            --body "## Phase 1 is done. Phase 2 is ready to run.
+
+          **Date:** $DISPLAY_DATE
+
+          ### Files committed this run
+          - \`investment-engine/sector/AI/stock-data/investment_data_$DATE.xlsx\` — scored workbook
+          - \`investment-engine/sector/AI/stock-data/consolidated_$DATE.csv\` — Investment Master + Speculative combined
+          - \`investment-engine/sector/AI/ticker-review/watchlist_$DATE.json\` — watchlist classification (WL1–WL4)
+
+          ### To run Phase 2
+          1. Open the **Investment Engine** project in Claude.ai
+          2. Say: **run the investment review for $DISPLAY_DATE**
+          3. Claude will:
+             - Confirm data received
+             - Check existing Robinhood watchlists for duplicates
+             - Add qualifying tickers to WL1–WL4 via Robinhood MCP
+             - Send a completion summary
+             - Research additional High Conviction candidates
+             - Commit research results to \`ticker-review/\`
+
+          Close this issue once Phase 2 is complete."

@@ -10,7 +10,7 @@ pip install -r requirements.txt
 
 ## 2. Get your Finviz Elite auth token
 
-Sign up for Finviz Elite at https://finviz.com/elite.ashx. Your auth token is the `auth=` parameter value in any Finviz export URL, for example:
+Sign up for Finviz Elite at https://finviz.com/elite.ashx. Your auth token is the `auth=` value in any Finviz export URL:
 
 ```
 https://elite.finviz.com/export?v=151&t=CEG&c=...&auth=YOUR_TOKEN_HERE
@@ -18,91 +18,90 @@ https://elite.finviz.com/export?v=151&t=CEG&c=...&auth=YOUR_TOKEN_HERE
 
 ## 3. Configure your auth token
 
-Option A: Set directly for the current session
-
 ```powershell
 $env:FINVIZ = "your_finviz_auth_token_here"
 ```
 
-Option B: Load from a `.env` file
-
-```powershell
-Copy-Item .env.example .env
-# Edit .env and fill in your FINVIZ token
-Get-Content .env | ForEach-Object {
-    if ($_ -match '(\w+)=(.*)') {
-        [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
-    }
-}
-```
-
 ## 4. Configure tickers
 
-Edit `investment-engine/Ticker-Master.json` to add or remove tickers per pillar. The master file drives everything — per-sector `pillar_tickers.json` files are kept in sync automatically on every run.
+Edit `investment-engine/Ticker-Master.json` to add or remove tickers per pillar. This file is the source of truth — per-sector `pillar_tickers.json` files are kept in sync automatically on every run.
 
-## 5. Run the engine
+## 5. Run the engine (Phase 1)
 
 ```powershell
 python investment-engine/engine/data_engine.py
 ```
 
-The engine will:
+**What it does:**
 
-1. Read tickers from `investment-engine/Ticker-Master.json`
-2. Make a single bulk Finviz export call for all tickers at once
-3. Compute **Graham Number** and flag undervalued stocks in the `Graham Undervalued` column
-4. Use the Finviz analyst consensus **Target Price** to compute **Upside %**
-5. Compute **Investment Score** (0–100 weighted composite) for every ticker
-6. Split tickers: ≤ 2 null columns → Investment Master; > 2 null columns → Speculative Investments
-7. Write `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`
-8. Export a consolidated CSV (Investment Master + Speculative) and POST to Claude API for review
-9. Save Claude's acknowledgment and top-5 ticker recommendations to `investment-engine/sector/<SECTOR>/ticker-review/ticker_review_MMDDYYYY.json`
+1. Loads tickers from `Ticker-Master.json`
+2. Makes a single bulk Finviz export call for all tickers at once
+3. Computes Buy Zone, Graham Number, and Upside % for each ticker
+4. Computes Investment Score (0–100 weighted composite)
+5. Splits tickers: ≤ 2 null columns → Investment Master; > 2 null columns → Speculative Investments
+6. Writes `sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`
+7. Writes `sector/<SECTOR>/stock-data/consolidated_MMDDYYYY.csv` (Investment Master + Speculative combined)
+8. Classifies every ticker against the 4 Robinhood watchlist scorecards → `sector/<SECTOR>/ticker-review/watchlist_MMDDYYYY.json`
 
 ## 6. Review the workbook
 
 Open `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`:
 
-| Tab | What's in it |
+| Tab | Contents |
 |---|---|
 | **Investment Master** | Tickers with sufficient data, sorted by Investment Score descending |
-| **Speculative Investments** | Tickers with more than 2 null columns — less data, interpret with caution |
-| **AI [Sub-pillar]** | Full scored dataset for that pillar (all tickers, including speculative) |
+| **Speculative Investments** | Tickers with > 2 null columns — less reliable scores, use with caution |
+| **AI [Pillar Name]** | All tickers for that pillar including speculative |
 
-Key columns to note:
+Key columns:
 
 | Column | Notes |
 |---|---|
-| **Investment Score** | 0–100 composite. Higher = more attractive. Missing metrics are excluded and weights rescaled. |
-| **Target Price** | Analyst consensus from Finviz. Upside % is derived from this. |
-| **Graham Undervalued** | `True` if Current Price < Graham Number. `None` if EPS or Book Value data is missing. |
-| **Upside %** | `((Target Price − Current Price) / Current Price) × 100` |
-| **Analyst Recom** | 1.0 = Strong Buy, 5.0 = Strong Sell (Finviz consensus score) |
+| **Investment Score** | 0–100 composite. Higher = more attractive. |
+| **Buy Zone** | Current Price × 0.80 — disciplined entry target |
+| **Target Price** | Analyst consensus from Finviz |
+| **Upside %** | ((Target − Price) / Price) × 100 |
+| **Graham Undervalued** | True if trading below Graham Number. None if data missing. |
+| **Analyst Recom** | 1.0 = Strong Buy, 5.0 = Strong Sell |
 
-## 7. Set up automation (optional)
+## 7. Run Phase 2 (Claude.ai)
 
-To run on a schedule via GitHub Actions:
+After Phase 1 runs (locally or via GitHub Actions), open the **Investment Engine** project in Claude.ai and say:
+
+> **run the investment review for [date]**
+
+Claude will:
+1. Confirm the data received (row counts from the consolidated CSV)
+2. Check existing Robinhood watchlists for duplicates
+3. Add qualifying tickers to WL1–WL4 via the Robinhood MCP connector
+4. Send a completion summary of what was added to each list
+5. Research additional High Conviction candidates
+6. Commit research results to `sector/<SECTOR>/ticker-review/research_MMDDYYYY.json`
+
+## 8. Set up GitHub Actions automation
 
 1. Push your repo to GitHub
 2. Go to **Settings → Secrets and variables → Actions** and add:
    - `FINVIZ` — your Finviz Elite auth token
-   - `ANTHROPIC_API_KEY` — your Anthropic API key (for Claude ticker review)
-3. The workflow runs weekly on Sundays at 21:00 UTC (4:00 PM EST)
-   - Manual trigger: **Actions tab → "Investment Engine" → "Run workflow"** (workflow file: `data_engine.yml`)
+3. The workflow (`data_engine.yml`) runs every Sunday at 9:00 PM UTC
+   - Manual trigger: **Actions tab → Investment Engine → Run workflow**
+4. After each run, a GitHub Issue is created under your repo signaling Phase 2 is ready
+
+---
 
 ## Troubleshooting
 
 **`[WARN] FINVIZ not set`**
-- The engine will still run but all Finviz fields will be empty. Set the token before running.
+Set the `FINVIZ` environment variable before running. The engine will still execute but all data columns will be empty.
 
 **`[WARN] Target Price unavailable for {TICKER}`**
-- Finviz has no analyst consensus target for that ticker. Upside % will be `None`.
+Finviz has no analyst consensus target for that ticker. Upside % will be None.
 
 **`[WARN] Finviz returned no data for: {TICKERS}`**
-- Those ticker symbols were not found in Finviz. Check spelling — must match Finviz format exactly (e.g. `NVDA` not `Nvidia`).
+Those symbols were not found in Finviz. Check spelling — must match Finviz format exactly (e.g. `NVDA` not `Nvidia`).
 
 **Adding a new pillar**
-- Add it directly to `investment-engine/Ticker-Master.json` under the appropriate sector key. The engine creates the required directories automatically on its next run.
+Add it directly to `investment-engine/Ticker-Master.json` under the appropriate sector key. The engine creates required directories on its next run.
 
----
-
-> **Claude ticker review** is enabled. After each run, a consolidated CSV of Investment Master + Speculative data is sent to the Claude API. Claude acknowledges receipt and returns up to 5 ranked ticker recommendations saved to `sector/<SECTOR>/ticker-review/ticker_review_MMDDYYYY.json`. Add `ANTHROPIC_API_KEY` as a GitHub secret to activate this in GitHub Actions; without it the step is skipped with a warning.
+**Adding a new ticker to an existing pillar**
+Edit `Ticker-Master.json` — find the pillar and append the ticker to its list. Changes take effect on the next run.
