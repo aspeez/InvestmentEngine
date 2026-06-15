@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+import anthropic
 import pandas as pd
 import requests
 from openpyxl import Workbook
@@ -529,14 +530,129 @@ def build_summary(records_by_context: List[Tuple[TickerContext, List[Dict[str, O
     }
 
 
-# Claude ticker review — commented out to avoid API usage costs.
-# Uncomment this function and the call site in run() to re-enable.
-#
-# def generate_claude_ticker_review(summary: Dict[str, object], date_stamp: str, sector: str) -> Optional[str]:
-#     ...
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_REVIEW_SYSTEM_PROMPT = (
+    "You are the Investment Engine AI analyst. Your role is to review weekly investment data "
+    "across AI-sector tickers and surface the most actionable opportunities.\n\n"
+    "When you receive ticker data (Investment Master + Speculative Investments combined as CSV), "
+    "you must respond in two clearly separated sections:\n\n"
+    "1. DATA RECEIVED\n"
+    "Confirm the data was received. State how many Investment Master rows and how many "
+    "Speculative rows were included.\n\n"
+    "2. TOP TICKER RECOMMENDATIONS\n"
+    "Return a JSON block — and ONLY a JSON block — under this heading with exactly this shape:\n"
+    "```json\n"
+    "{\n"
+    '  "recommendations": [\n'
+    "    {\n"
+    '      "ticker": "NVDA",\n'
+    '      "pillar": "AI Compute Chips",\n'
+    '      "investment_score": 87.5,\n'
+    '      "rationale": "One sentence max explaining why this ticker was selected."\n'
+    "    }\n"
+    "  ]\n"
+    "}\n"
+    "```\n"
+    "Return a maximum of 5 tickers. Rank them by overall investment attractiveness — "
+    "prioritize high Investment Score, strong upside, positive revenue growth, and RSI below 60. "
+    "Include speculative tickers only if no better core candidates exist."
+)
+
+TICKER_REVIEW_FILENAME = "ticker_review"
 
 
-def run(auth_token: Optional[str]) -> Dict[str, object]:
+def _build_consolidated_csv(core: List[Dict], speculative: List[Dict]) -> str:
+    """Serialize Investment Master and Speculative rows into a single CSV string."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=["Tab"] + MASTER_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for row in core:
+        writer.writerow({"Tab": "Investment Master", **{col: _cell_value(row.get(col)) for col in MASTER_COLUMNS}})
+    for row in speculative:
+        writer.writerow({"Tab": "Speculative Investments", **{col: _cell_value(row.get(col)) for col in MASTER_COLUMNS}})
+    return buf.getvalue()
+
+
+def _save_consolidated_csv(csv_content: str, sector: str, date_stamp: str) -> Path:
+    path = sector_ticker_review_dir(sector) / f"consolidated_{date_stamp}.csv"
+    path.write_text(csv_content, encoding="utf-8")
+    print(f"[INFO] Consolidated CSV saved: {path}")
+    return path
+
+
+def generate_claude_ticker_review(
+    csv_content: str,
+    date_stamp: str,
+    sector: str,
+    api_key: str,
+    core_count: int,
+    speculative_count: int,
+) -> Optional[Dict]:
+    """
+    POST Investment Master + Speculative data to Claude and parse the response.
+    Returns a dict with keys: acknowledgment (str), recommendations (list).
+    """
+    client = anthropic.Anthropic(api_key=api_key)
+
+    user_message = (
+        f"Here is the weekly investment data for sector '{sector}' as of {date_stamp}.\n"
+        f"It contains {core_count} Investment Master rows and {speculative_count} Speculative rows.\n\n"
+        f"```csv\n{csv_content}```"
+    )
+
+    try:
+        message = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            system=CLAUDE_REVIEW_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except Exception as exc:
+        print(f"[WARN] Claude API call failed: {exc}")
+        return None
+
+    response_text = message.content[0].text if message.content else ""
+    print(f"[INFO] Claude ticker review response received ({len(response_text)} chars)")
+
+    # Parse the two sections out of the response
+    acknowledgment = ""
+    recommendations: List[Dict] = []
+
+    # Split on the "TOP TICKER RECOMMENDATIONS" heading
+    parts = response_text.split("2. TOP TICKER RECOMMENDATIONS", 1)
+    if parts:
+        ack_section = parts[0].replace("1. DATA RECEIVED", "").strip()
+        acknowledgment = ack_section
+
+    if len(parts) > 1:
+        rec_section = parts[1]
+        # Extract the JSON block
+        json_start = rec_section.find("```json")
+        json_end = rec_section.find("```", json_start + 7)
+        if json_start != -1 and json_end != -1:
+            json_str = rec_section[json_start + 7:json_end].strip()
+            try:
+                parsed = json.loads(json_str)
+                recommendations = parsed.get("recommendations", [])
+            except json.JSONDecodeError as exc:
+                print(f"[WARN] Could not parse Claude recommendations JSON: {exc}")
+
+    print(f"[INFO] Acknowledgment: {acknowledgment[:200]}")
+    print(f"[INFO] Recommendations received: {len(recommendations)} tickers")
+
+    return {"acknowledgment": acknowledgment, "recommendations": recommendations}
+
+
+def _save_ticker_review(review: Dict, sector: str, date_stamp: str) -> Path:
+    path = sector_ticker_review_dir(sector) / f"{TICKER_REVIEW_FILENAME}_{date_stamp}.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(review, fh, indent=2)
+        fh.write("\n")
+    print(f"[INFO] Ticker review saved: {path}")
+    return path
+
+
+def run(auth_token: Optional[str], anthropic_api_key: Optional[str] = None) -> Dict[str, object]:
     ensure_directories()
     master_config = load_master_config()
     sync_master_files(master_config)
@@ -587,9 +703,31 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
         workbook.save(daily_workbook_path)
         workbook.close()
 
-        outputs["sectors"][sector] = {
-            "daily_workbook": str(daily_workbook_path),
-        }
+        sector_output: Dict[str, object] = {"daily_workbook": str(daily_workbook_path)}
+
+        # Claude ticker review — consolidate Investment Master + Speculative into CSV,
+        # POST to Claude API, save acknowledgment and top-5 recommendations.
+        if anthropic_api_key:
+            core, speculative = _split_records(records_by_context)
+            csv_content = _build_consolidated_csv(core, speculative)
+            _save_consolidated_csv(csv_content, sector, date_stamp)
+
+            review = generate_claude_ticker_review(
+                csv_content=csv_content,
+                date_stamp=date_stamp,
+                sector=sector,
+                api_key=anthropic_api_key,
+                core_count=len(core),
+                speculative_count=len(speculative),
+            )
+            if review:
+                review_path = _save_ticker_review(review, sector, date_stamp)
+                sector_output["ticker_review"] = str(review_path)
+                sector_output["recommendations"] = review.get("recommendations", [])
+        else:
+            print(f"[WARN] ANTHROPIC_API_KEY not set — skipping Claude ticker review for '{sector}'")
+
+        outputs["sectors"][sector] = sector_output
 
     return outputs
 
@@ -605,7 +743,10 @@ def main() -> None:
     auth_token = args.auth_token or os.getenv("FINVIZ")
     if not auth_token:
         print("[WARN] FINVIZ not set — all Finviz fields will be empty")
-    outputs = run(auth_token=auth_token)
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        print("[WARN] ANTHROPIC_API_KEY not set — Claude ticker review will be skipped")
+    outputs = run(auth_token=auth_token, anthropic_api_key=anthropic_api_key)
     print(json.dumps(outputs, indent=2))
 
 

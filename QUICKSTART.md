@@ -55,6 +55,8 @@ The engine will:
 5. Compute **Investment Score** (0–100 weighted composite) for every ticker
 6. Split tickers: ≤ 2 null columns → Investment Master; > 2 null columns → Speculative Investments
 7. Write `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`
+8. Export a consolidated CSV (Investment Master + Speculative) and POST to Claude API for review
+9. Save Claude's acknowledgment and top-5 ticker recommendations to `investment-engine/sector/<SECTOR>/ticker-review/ticker_review_MMDDYYYY.json`
 
 ## 6. Review the workbook
 
@@ -83,6 +85,7 @@ To run on a schedule via GitHub Actions:
 1. Push your repo to GitHub
 2. Go to **Settings → Secrets and variables → Actions** and add:
    - `FINVIZ` — your Finviz Elite auth token
+   - `ANTHROPIC_API_KEY` — your Anthropic API key (for Claude ticker review)
 3. The workflow runs weekly on Sundays at 21:00 UTC (4:00 PM EST)
    - Manual trigger: **Actions tab → "Investment Engine" → "Run workflow"** (workflow file: `data_engine.yml`)
 
@@ -102,4 +105,4 @@ To run on a schedule via GitHub Actions:
 
 ---
 
-> **Claude ticker review** is currently disabled. The logic is preserved in `data_engine.py` (commented out) and can be re-enabled by uncommenting `generate_claude_ticker_review` and its call site in `run()`, then adding `ANTHROPIC_API_KEY` as a repository secret and restoring it to the workflow `env` block.
+> **Claude ticker review** is enabled. After each run, a consolidated CSV of Investment Master + Speculative data is sent to the Claude API. Claude acknowledges receipt and returns up to 5 ranked ticker recommendations saved to `sector/<SECTOR>/ticker-review/ticker_review_MMDDYYYY.json`. Add `ANTHROPIC_API_KEY` as a GitHub secret to activate this in GitHub Actions; without it the step is skipped with a warning.
