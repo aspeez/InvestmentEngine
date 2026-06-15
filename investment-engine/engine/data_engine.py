@@ -298,6 +298,12 @@ class FMPClient:
                 if net_debt is not None and market_cap
                 else None
             ),
+            # Raw values preserved for the Audit tab
+            "_cash": cash_and_cash_equivalents,
+            "_total_debt": total_debt,
+            "_rev_growth_raw": revenue_growth,
+            "_eps_growth_raw": eps_growth,
+            "_gross_margin_raw": gross_margin,
         }
 
 
@@ -513,8 +519,12 @@ def fetch_records_for_pillar(
 
         # Target Price via Forward P/E; fall back to TTM EPS
         eps_used = forward_eps if (forward_eps is not None and forward_eps != 0) else ttm_eps
+        eps_source = (
+            "Forward" if (forward_eps is not None and forward_eps != 0)
+            else ("TTM" if (ttm_eps is not None and ttm_eps != 0) else "None")
+        )
+        pe_multiple = pillar_pe_multiple(context.pillar)
         if eps_used is not None and eps_used != 0:
-            pe_multiple = pillar_pe_multiple(context.pillar)
             target_price: Optional[float] = eps_used * pe_multiple
         else:
             target_price = None
@@ -549,6 +559,19 @@ def fetch_records_for_pillar(
             "Backlog Growth %": None,
             "Gross Margin %": metrics.get("Gross Margin %"),
             "Net Cash Ratio": metrics.get("Net Cash Ratio"),
+            # Audit fields — raw API values and intermediates, not written to pillar tabs
+            "_audit_forward_eps": forward_eps,
+            "_audit_ttm_eps": ttm_eps,
+            "_audit_eps_source": eps_source,
+            "_audit_eps_used": eps_used,
+            "_audit_pillar_pe": pe_multiple,
+            "_audit_book_value_per_share": bvps,
+            "_audit_graham_number": graham,
+            "_audit_cash": metrics.get("_cash"),
+            "_audit_total_debt": metrics.get("_total_debt"),
+            "_audit_rev_growth_raw": metrics.get("_rev_growth_raw"),
+            "_audit_eps_growth_raw": metrics.get("_eps_growth_raw"),
+            "_audit_gross_margin_raw": metrics.get("_gross_margin_raw"),
         }
         record["Investment Score"] = compute_investment_score(record)
         records.append(record)
@@ -585,6 +608,175 @@ def write_master_sheet(
     for row_idx, row in enumerate(all_rows, start=2):
         for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
             sheet.cell(row=row_idx, column=col_idx, value=row.get(header))
+
+
+AUDIT_COLUMNS = [
+    "Pillar", "Ticker", "Current Price",
+    "Forward EPS", "TTM EPS", "EPS Source", "EPS Used", "Pillar P/E Multiple",
+    "Book Value Per Share", "Cash", "Total Debt", "Market Cap",
+    "Revenue Growth (raw)", "EPS Growth (raw)", "Gross Margin (raw)",
+    "P/E Ratio", "P/S Ratio", "RSI",
+    "Buy Zone", "Target Price", "Graham Number", "Graham Undervalued",
+    "Upside %", "Net Cash Ratio", "Revenue Growth %", "EPS Growth %", "Gross Margin %",
+    "Investment Score",
+]
+
+
+def write_audit_sheet(
+    workbook: Workbook,
+    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
+) -> None:
+    if "Audit" in workbook.sheetnames:
+        sheet = workbook["Audit"]
+    else:
+        sheet = workbook.create_sheet(title="Audit")
+
+    for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
+        sheet.cell(row=1, column=col_idx, value=header)
+
+    row_idx = 2
+    for context, records in records_by_context:
+        for record in records:
+            audit_row = {
+                "Pillar": context.pillar,
+                "Ticker": record.get("Ticker"),
+                "Current Price": record.get("Current Price"),
+                "Forward EPS": record.get("_audit_forward_eps"),
+                "TTM EPS": record.get("_audit_ttm_eps"),
+                "EPS Source": record.get("_audit_eps_source"),
+                "EPS Used": record.get("_audit_eps_used"),
+                "Pillar P/E Multiple": record.get("_audit_pillar_pe"),
+                "Book Value Per Share": record.get("_audit_book_value_per_share"),
+                "Cash": record.get("_audit_cash"),
+                "Total Debt": record.get("_audit_total_debt"),
+                "Market Cap": record.get("Market Cap"),
+                "Revenue Growth (raw)": record.get("_audit_rev_growth_raw"),
+                "EPS Growth (raw)": record.get("_audit_eps_growth_raw"),
+                "Gross Margin (raw)": record.get("_audit_gross_margin_raw"),
+                "P/E Ratio": record.get("P/E Ratio"),
+                "P/S Ratio": record.get("P/S Ratio"),
+                "RSI": record.get("RSI"),
+                "Buy Zone": record.get("Buy Zone"),
+                "Target Price": record.get("Target Price"),
+                "Graham Number": record.get("_audit_graham_number"),
+                "Graham Undervalued": record.get("Graham Undervalued"),
+                "Upside %": record.get("Upside %"),
+                "Net Cash Ratio": record.get("Net Cash Ratio"),
+                "Revenue Growth %": record.get("Revenue Growth %"),
+                "EPS Growth %": record.get("EPS Growth %"),
+                "Gross Margin %": record.get("Gross Margin %"),
+                "Investment Score": record.get("Investment Score"),
+            }
+            for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
+                sheet.cell(row=row_idx, column=col_idx, value=audit_row.get(header))
+            row_idx += 1
+
+
+def write_formula_guide_sheet(workbook: Workbook) -> None:
+    if "Formula Guide" in workbook.sheetnames:
+        sheet = workbook["Formula Guide"]
+    else:
+        sheet = workbook.create_sheet(title="Formula Guide")
+
+    headers = ["Column", "Formula", "How to Verify", "Notes"]
+    for col_idx, header in enumerate(headers, start=1):
+        sheet.cell(row=1, column=col_idx, value=header)
+
+    formulas = [
+        (
+            "Buy Zone",
+            "Current Price × 0.80",
+            "Take Current Price from the Audit tab and multiply by 0.80. Result should match Buy Zone.",
+            "Represents a 20% discount to today's price — a target entry level if the stock pulls back.",
+        ),
+        (
+            "Target Price",
+            "EPS Used × Pillar P/E Multiple",
+            "Multiply EPS Used by Pillar P/E Multiple (both in Audit tab). Result should match Target Price.",
+            "EPS Source column shows whether Forward EPS or TTM EPS was used. Pillar P/E multiples are defined in PILLAR_TARGET_PE_MULTIPLES in data_engine.py.",
+        ),
+        (
+            "Graham Number",
+            "√(22.5 × EPS Used × Book Value Per Share)",
+            "Multiply 22.5 × EPS Used × Book Value Per Share (all in Audit tab), then take the square root.",
+            "Only valid when both EPS and Book Value Per Share are positive. A classic Benjamin Graham intrinsic value estimate.",
+        ),
+        (
+            "Graham Undervalued",
+            "Current Price < Graham Number",
+            "Compare Current Price to Graham Number in the Audit tab. TRUE = stock trades below Graham's estimated value.",
+            "Informational only — does not affect Investment Score. None when EPS or Book Value data is unavailable.",
+        ),
+        (
+            "Upside %",
+            "((Target Price − Current Price) / Current Price) × 100",
+            "Subtract Current Price from Target Price, divide by Current Price, multiply by 100.",
+            "Expressed as a percentage (e.g. 25.0 = 25% upside). Negative means the model sees downside at the current price.",
+        ),
+        (
+            "Net Cash Ratio",
+            "(Cash − Total Debt) / Market Cap",
+            "Subtract Total Debt from Cash, then divide by Market Cap (all in Audit tab).",
+            "Positive = net cash position. Negative = net debt. Sourced from FMP balance-sheet-statement.",
+        ),
+        (
+            "Revenue Growth %",
+            "Revenue Growth (raw) × 100",
+            "Take Revenue Growth (raw) from Audit tab and multiply by 100.",
+            "FMP returns growth as a decimal (e.g. 0.185). Multiplying by 100 gives 18.5%.",
+        ),
+        (
+            "EPS Growth %",
+            "EPS Growth (raw) × 100",
+            "Take EPS Growth (raw) from Audit tab and multiply by 100.",
+            "FMP returns growth as a decimal. Multiplying by 100 gives the percentage.",
+        ),
+        (
+            "Gross Margin %",
+            "Gross Margin (raw) × 100",
+            "Take Gross Margin (raw) from Audit tab and multiply by 100.",
+            "Sourced from FMP ratios-ttm-bulk field grossProfitMarginTTM. Multiplying by 100 gives the percentage.",
+        ),
+        (
+            "Investment Score",
+            "Weighted composite of 10 metrics, each normalized 0–100, then combined by weight.",
+            "See the component weight table below. Each metric can be traced back to the Audit tab.",
+            "Missing metrics are excluded and the remaining weights are rescaled proportionally.",
+        ),
+    ]
+
+    for row_idx, (col, formula, how_to, notes) in enumerate(formulas, start=2):
+        sheet.cell(row=row_idx, column=1, value=col)
+        sheet.cell(row=row_idx, column=2, value=formula)
+        sheet.cell(row=row_idx, column=3, value=how_to)
+        sheet.cell(row=row_idx, column=4, value=notes)
+
+    score_start = len(formulas) + 4
+    sheet.cell(row=score_start, column=1, value="Investment Score — Component Weights and Normalization")
+    score_start += 1
+
+    score_headers = ["Category", "Metric", "Weight", "Scoring Direction", "Normalization Range"]
+    for col_idx, h in enumerate(score_headers, start=1):
+        sheet.cell(row=score_start, column=col_idx, value=h)
+    score_start += 1
+
+    score_components = [
+        ("Growth (35%)", "Revenue Growth %", "20%", "Higher is better", "-50% to 100%"),
+        ("Growth (35%)", "EPS Growth %", "10%", "Higher is better", "-50% to 100%"),
+        ("Growth (35%)", "Backlog Growth %", "5%", "Higher is better", "-50% to 100%"),
+        ("Financial Quality (25%)", "Gross Margin %", "15%", "Higher is better", "0% to 100%"),
+        ("Financial Quality (25%)", "Net Cash Ratio", "10%", "Higher is better", "-1.0 to 2.0"),
+        ("Valuation (25%)", "P/S Ratio", "10%", "Lower is better", "0 to 30 (capped; above 30 = score 0)"),
+        ("Valuation (25%)", "Upside %", "10%", "Higher is better", "-30% to 100%"),
+        ("Valuation (25%)", "P/E Ratio", "5%", "Lower is better", "0 to 60 (capped; above 60 or negative = score 0)"),
+        ("Entry Timing (15%)", "RSI", "10%", "Lower is better (oversold favored)", "Score 100 at RSI=30, score 0 at RSI=80+"),
+        ("Entry Timing (15%)", "Buy Zone Proximity", "5%", "Closer to Buy Zone = higher score", "Score 100 at/below Buy Zone, score 0 when 25%+ above it"),
+    ]
+
+    for comp in score_components:
+        for col_idx, val in enumerate(comp, start=1):
+            sheet.cell(row=score_start, column=col_idx, value=val)
+        score_start += 1
 
 
 def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Dict[str, Optional[float]]]) -> None:
@@ -709,6 +901,8 @@ def run(api_key: Optional[str]) -> Dict[str, object]:
             records_by_context.append((context, records))
 
         write_master_sheet(workbook, records_by_context)
+        write_audit_sheet(workbook, records_by_context)
+        write_formula_guide_sheet(workbook)
 
         daily_workbook_path = sector_stock_data_dir(sector) / f"{DAILY_WORKBOOK_PREFIX}_{date_stamp}.xlsx"
         workbook.save(daily_workbook_path)
