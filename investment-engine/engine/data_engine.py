@@ -463,7 +463,8 @@ def fetch_records_for_pillar(
             try:
                 metrics = client.get_metrics(ticker)
                 time.sleep(0.15)
-            except Exception:
+            except Exception as exc:
+                print(f"[WARN] Failed to fetch metrics for {ticker}: {exc}")
                 metrics = {}
 
         current_price = metrics.get("Current Price")
