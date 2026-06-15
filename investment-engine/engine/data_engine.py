@@ -102,8 +102,11 @@ class FMPClient:
 
     def _get(self, endpoint: str, symbol: str, symbol_param: str = "symbol") -> Optional[dict]:
         params = {symbol_param: symbol, "apikey": self.api_key}
-        response = self.session.get(f"{FMP_BASE_URL}/{endpoint}", params=params, timeout=25)
-        response.raise_for_status()
+        url = f"{FMP_BASE_URL}/{endpoint}"
+        response = self.session.get(url, params=params, timeout=25)
+        if not response.ok:
+            print(f"[WARN] FMP {endpoint} returned {response.status_code} for {symbol}: {response.text[:200]}")
+            return None
         payload = response.json()
         if isinstance(payload, list) and payload:
             return payload[0]
@@ -112,8 +115,9 @@ class FMPClient:
         return None
 
     def _get_rsi(self, symbol: str) -> Optional[float]:
+        url = f"{FMP_BASE_URL}/technical-indicators/rsi"
         response = self.session.get(
-            f"{FMP_BASE_URL}/technical-indicators/rsi",
+            url,
             params={
                 "symbol": symbol,
                 "periodLength": 10,
@@ -122,7 +126,9 @@ class FMPClient:
             },
             timeout=25,
         )
-        response.raise_for_status()
+        if not response.ok:
+            print(f"[WARN] FMP technical-indicators/rsi returned {response.status_code} for {symbol}: {response.text[:200]}")
+            return None
         payload = response.json()
         if isinstance(payload, list) and payload:
             return self._to_float(payload[0].get("rsi"))
@@ -140,12 +146,12 @@ class FMPClient:
         if self._ratios_bulk_cache is not None:
             return self._ratios_bulk_cache
 
-        response = self.session.get(
-            f"{FMP_BASE_URL}/ratios-ttm-bulk",
-            params={"apikey": self.api_key},
-            timeout=60,
-        )
-        response.raise_for_status()
+        url = f"{FMP_BASE_URL}/ratios-ttm-bulk"
+        response = self.session.get(url, params={"apikey": self.api_key}, timeout=60)
+        if not response.ok:
+            print(f"[WARN] FMP ratios-ttm-bulk returned {response.status_code}: {response.text[:200]}")
+            self._ratios_bulk_cache = {}
+            return {}
         payload = response.json()
 
         cache: Dict[str, dict] = {}
@@ -204,12 +210,11 @@ class FMPClient:
         return None
 
     def _get_book_value_per_share(self, symbol: str) -> Optional[float]:
-        response = self.session.get(
-            f"{FMP_BASE_URL}/ratios",
-            params={"symbol": symbol, "apikey": self.api_key},
-            timeout=25,
-        )
-        response.raise_for_status()
+        url = f"{FMP_BASE_URL}/ratios"
+        response = self.session.get(url, params={"symbol": symbol, "apikey": self.api_key}, timeout=25)
+        if not response.ok:
+            print(f"[WARN] FMP ratios returned {response.status_code} for {symbol}: {response.text[:200]}")
+            return None
         payload = response.json()
         if isinstance(payload, list) and payload:
             return self._to_float(payload[0].get("bookValuePerShare"))
