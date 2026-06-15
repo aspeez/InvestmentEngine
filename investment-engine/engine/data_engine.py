@@ -6,7 +6,6 @@ import io
 import json
 import math
 import os
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -99,40 +98,14 @@ class FinvizClient:
         except ValueError:
             return None
 
-    def get_metrics(self, ticker: str) -> Dict[str, Optional[float]]:
-        url = (
-            f"{FINVIZ_BASE_URL}?v=151"
-            f"&t={ticker}"
-            f"&c={FINVIZ_COLUMNS}"
-            f"&auth={self.auth_token}"
-        )
-        try:
-            response = self.session.get(url, timeout=15)
-            response.raise_for_status()
-        except Exception as exc:
-            print(f"[WARN] Finviz request failed for {ticker}: {exc}")
-            return {}
-
-        try:
-            reader = csv.DictReader(io.StringIO(response.text))
-            rows = list(reader)
-        except Exception as exc:
-            print(f"[WARN] Finviz CSV parse failed for {ticker}: {exc}")
-            return {}
-
-        if not rows:
-            print(f"[WARN] Finviz returned no data for {ticker}")
-            return {}
-
-        row = rows[0]
+    def _parse_row(self, row: dict) -> Dict[str, Optional[float]]:
         p = self._parse_float
 
         price = p(row.get("Price"))
         market_cap_raw = p(row.get("Market Cap"))
-        # Finviz exports Market Cap in millions — convert to absolute dollars
-        market_cap = market_cap_raw * 1_000_000 if market_cap_raw is not None else None
+        # Finviz exports Market Cap in millions — convert to full dollars, store as int
+        market_cap = int(market_cap_raw * 1_000_000) if market_cap_raw is not None else None
 
-        # Revenue Growth % and EPS Growth % — prefer Q/Q (more current), 5Y as fallback
         rev_growth_qq = p(row.get("Sales Growth Quarter Over Quarter"))
         rev_growth_5y = p(row.get("Sales Growth Past 5 Years"))
         rev_growth = rev_growth_qq if rev_growth_qq is not None else rev_growth_5y
@@ -159,12 +132,50 @@ class FinvizClient:
             "Insider Ownership %": p(row.get("Insider Ownership")),
             "Institutional Ownership %": p(row.get("Institutional Ownership")),
             "Analyst Recom": p(row.get("Analyst Recom")),
-            # Raw growth values for audit tab
             "_rev_growth_qq": rev_growth_qq,
             "_rev_growth_5y": rev_growth_5y,
             "_eps_growth_qq": eps_growth_qq,
             "_eps_growth_5y": eps_growth_5y,
         }
+
+    def get_all_metrics(self, tickers: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
+        """Single bulk export call — returns a dict keyed by ticker symbol."""
+        ticker_param = ",".join(tickers)
+        url = (
+            f"{FINVIZ_BASE_URL}?v=151"
+            f"&t={ticker_param}"
+            f"&c={FINVIZ_COLUMNS}"
+            f"&auth={self.auth_token}"
+        )
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+        except Exception as exc:
+            print(f"[WARN] Finviz bulk request failed: {exc}")
+            return {}
+
+        try:
+            reader = csv.DictReader(io.StringIO(response.text))
+            rows = list(reader)
+        except Exception as exc:
+            print(f"[WARN] Finviz CSV parse failed: {exc}")
+            return {}
+
+        if not rows:
+            print("[WARN] Finviz returned no data")
+            return {}
+
+        result: Dict[str, Dict[str, Optional[float]]] = {}
+        for row in rows:
+            ticker = row.get("Ticker", "").strip().upper()
+            if ticker:
+                result[ticker] = self._parse_row(row)
+
+        missing = [t for t in tickers if t not in result]
+        if missing:
+            print(f"[WARN] Finviz returned no data for: {', '.join(missing)}")
+
+        return result
 
 
 def ensure_directories() -> None:
@@ -358,18 +369,11 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
 def fetch_records_for_pillar(
     context: TickerContext,
-    client: Optional[FinvizClient],
+    metrics_cache: Dict[str, Dict[str, Optional[float]]],
 ) -> List[Dict[str, Optional[float]]]:
     records: List[Dict[str, Optional[float]]] = []
     for ticker in context.tickers:
-        metrics: Dict[str, Optional[float]] = {}
-        if client is not None:
-            try:
-                metrics = client.get_metrics(ticker)
-                time.sleep(0.5)
-            except Exception as exc:
-                print(f"[WARN] Failed to fetch metrics for {ticker}: {exc}")
-                metrics = {}
+        metrics: Dict[str, Optional[float]] = metrics_cache.get(ticker, {})
 
         current_price = metrics.get("Current Price")
         eps = metrics.get("EPS")
@@ -454,7 +458,7 @@ def write_master_sheet(
 
     for row_idx, row in enumerate(all_rows, start=2):
         for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
-            sheet.cell(row=row_idx, column=col_idx, value=row.get(header))
+            sheet.cell(row=row_idx, column=col_idx, value=_cell_value(row.get(header)))
 
 
 AUDIT_COLUMNS = [
@@ -514,7 +518,7 @@ def write_audit_sheet(
                 "Investment Score": record.get("Investment Score"),
             }
             for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
-                sheet.cell(row=row_idx, column=col_idx, value=audit_row.get(header))
+                sheet.cell(row=row_idx, column=col_idx, value=_cell_value(audit_row.get(header)))
             row_idx += 1
 
 
@@ -626,6 +630,13 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
         score_start += 1
 
 
+def _cell_value(value: object) -> object:
+    """Round floats to 2 decimal places for clean cell display."""
+    if isinstance(value, float):
+        return round(value, 2)
+    return value
+
+
 def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Dict[str, Optional[float]]]) -> None:
     if sheet_name in workbook.sheetnames:
         sheet = workbook[sheet_name]
@@ -637,7 +648,7 @@ def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Di
 
     for row_index, record in enumerate(records, start=2):
         for column_index, header in enumerate(COLUMNS, start=1):
-            sheet.cell(row=row_index, column=column_index, value=record.get(header))
+            sheet.cell(row=row_index, column=column_index, value=_cell_value(record.get(header)))
 
 
 def format_metric(value: Optional[float], suffix: str = "") -> str:
@@ -690,11 +701,27 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     sync_master_files(master_config)
     ensure_sector_directories(master_config.keys())
 
-    client = FinvizClient(auth_token) if auth_token else None
     date_stamp = datetime.now().strftime(DATE_FORMAT)
 
+    all_contexts = all_pillar_contexts(master_config)
+
+    # Single bulk Finviz call for all tickers across all pillars
+    metrics_cache: Dict[str, Dict[str, Optional[float]]] = {}
+    if auth_token:
+        client = FinvizClient(auth_token)
+        all_tickers: List[str] = []
+        seen: set = set()
+        for ctx in all_contexts:
+            for t in ctx.tickers:
+                if t not in seen:
+                    all_tickers.append(t)
+                    seen.add(t)
+        print(f"[INFO] Fetching Finviz data for {len(all_tickers)} tickers...")
+        metrics_cache = client.get_all_metrics(all_tickers)
+        print(f"[INFO] Received data for {len(metrics_cache)} tickers")
+
     contexts_by_sector: Dict[str, List[TickerContext]] = {}
-    for context in all_pillar_contexts(master_config):
+    for context in all_contexts:
         contexts_by_sector.setdefault(context.sector, []).append(context)
 
     outputs: Dict[str, object] = {"date": date_stamp, "sectors": {}}
@@ -706,7 +733,7 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
         records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]] = []
 
         for context in sector_contexts:
-            records = fetch_records_for_pillar(context, client)
+            records = fetch_records_for_pillar(context, metrics_cache)
             records_by_context.append((context, records))
 
         write_master_sheet(workbook, records_by_context)
