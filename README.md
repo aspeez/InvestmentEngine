@@ -200,7 +200,7 @@ Workflow file: `.github/workflows/update_ai_workbook.yml`
 
 Triggers:
 - Manual: `workflow_dispatch`
-- Schedule: Daily at 12:00 UTC
+- Schedule: Weekly on Sundays at 21:00 UTC (4:00 PM EST)
 
 Required repository secrets:
 

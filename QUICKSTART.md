@@ -11,8 +11,7 @@ pip install -r requirements.txt
 ## 2. Get your FMP API key
 
 Sign up at https://financialmodelingprep.com/ and obtain an API key from your account dashboard.
-- Free tier: 250 requests/day
-- Paid tiers: Higher limits (recommended — the engine makes several calls per ticker)
+- Ultimate plan recommended — the engine makes ~9 API calls per ticker (~675 total for the current universe)
 
 ## 3. Configure your API key
 
@@ -78,7 +77,7 @@ To run on a schedule via GitHub Actions:
 1. Push your repo to GitHub
 2. Go to **Settings → Secrets and variables → Actions** and add:
    - `FMP` — your FMP API key
-3. The workflow runs daily at 12:00 UTC
+3. The workflow runs weekly on Sundays at 21:00 UTC (4:00 PM EST)
    - Manual trigger: **Actions tab → "Daily Investment Engine Refresh" → "Run workflow"**
 
 ## Troubleshooting
