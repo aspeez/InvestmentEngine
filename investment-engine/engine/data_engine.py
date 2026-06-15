@@ -107,7 +107,11 @@ class FMPClient:
         if not response.ok:
             print(f"[WARN] FMP {endpoint} returned {response.status_code} for {symbol}: {response.text[:200]}")
             return None
-        payload = response.json()
+        try:
+            payload = response.json()
+        except Exception as exc:
+            print(f"[WARN] FMP {endpoint} returned invalid JSON for {symbol}: {exc}")
+            return None
         if isinstance(payload, list) and payload:
             return payload[0]
         if isinstance(payload, dict):
@@ -129,7 +133,11 @@ class FMPClient:
         if not response.ok:
             print(f"[WARN] FMP technical-indicators/rsi returned {response.status_code} for {symbol}: {response.text[:200]}")
             return None
-        payload = response.json()
+        try:
+            payload = response.json()
+        except Exception as exc:
+            print(f"[WARN] FMP technical-indicators/rsi returned invalid JSON for {symbol}: {exc}")
+            return None
         if isinstance(payload, list) and payload:
             return self._to_float(payload[0].get("rsi"))
         return None
@@ -147,9 +155,20 @@ class FMPClient:
             return self._ratios_bulk_cache
 
         url = f"{FMP_BASE_URL}/ratios-ttm-bulk"
-        response = self.session.get(url, params={"apikey": self.api_key}, timeout=60)
-        if not response.ok:
-            print(f"[WARN] FMP ratios-ttm-bulk returned {response.status_code}: {response.text[:200]}")
+        for attempt in range(3):
+            response = self.session.get(url, params={"apikey": self.api_key}, timeout=60)
+            if response.status_code == 429:
+                wait = 60 * (attempt + 1)
+                print(f"[WARN] FMP ratios-ttm-bulk rate-limited (429), retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            if not response.ok:
+                print(f"[WARN] FMP ratios-ttm-bulk returned {response.status_code}: {response.text[:200]}")
+                self._ratios_bulk_cache = {}
+                return {}
+            break
+        else:
+            print("[WARN] FMP ratios-ttm-bulk failed after 3 attempts — P/E, P/S, Gross Margin and TTM EPS will be empty")
             self._ratios_bulk_cache = {}
             return {}
         payload = response.json()
