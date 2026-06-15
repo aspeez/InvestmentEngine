@@ -1,0 +1,106 @@
+{
+  "watchlists": {
+    "High Conviction": [
+      {
+        "ticker": "NVDA",
+        "pillar": "AI Compute Chips",
+        "investment_score": 72.1,
+        "tab": "Investment Master",
+        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
+        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
+      }
+    ],
+    "Pullback Watch": [
+      {
+        "ticker": "MSFT",
+        "pillar": "AI Cloud",
+        "investment_score": 62.7,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
+        "ticker": "AVGO",
+        "pillar": "AI Compute Chips",
+        "investment_score": 60.3,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      }
+    ],
+    "Deep Value": [],
+    "Pipeline": [
+      {
+        "ticker": "CEG",
+        "pillar": "AI Power Generation",
+        "investment_score": 59.6,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "LITE",
+        "pillar": "AI Networking",
+        "investment_score": 54.9,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "DLR",
+        "pillar": "AI Land",
+        "investment_score": 52.1,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "VRT",
+        "pillar": "AI Heating and Cooling",
+        "investment_score": 54.5,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "GEV",
+        "pillar": "AI Grid and Power Transmission",
+        "investment_score": 57.8,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "EME",
+        "pillar": "AI Construction",
+        "investment_score": 51.4,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "AMZN",
+        "pillar": "AI Cloud",
+        "investment_score": 59.8,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "AJG",
+        "pillar": "AI Insurance and Risk",
+        "investment_score": 56.9,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
+      }
+    ]
+  },
+  "counts": {
+    "High Conviction": 1,
+    "Pullback Watch": 2,
+    "Deep Value": 0,
+    "Pipeline": 8
+  },
+  "unqualified_count": 64
+}
