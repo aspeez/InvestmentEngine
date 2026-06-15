@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import math
 import os
@@ -14,36 +16,21 @@ import pandas as pd
 import requests
 from openpyxl import Workbook
 
-FMP_BASE_URL = "https://financialmodelingprep.com/stable"
+FINVIZ_BASE_URL = "https://elite.finviz.com/export"
+# Column codes for the Finviz export endpoint (v=151)
+# 1=Ticker, 65=Price, 59=RSI(14), 7=P/E, 10=P/S, 6=Market Cap, 69=Target Price,
+# 16=EPS(ttm), 22=EPS Growth Q/Q, 19=EPS Growth Past 5Y, 73=Book/sh,
+# 23=Sales Growth Q/Q, 21=Sales Growth Past 5Y, 12=P/Cash, 38=Total Debt/Equity,
+# 41=Profit Margin, 39=Gross Margin, 48=Beta, 26=Insider Ownership,
+# 28=Institutional Ownership, 62=Analyst Recom
+FINVIZ_COLUMNS = "1,65,59,7,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62"
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECTOR_DIR = REPO_ROOT / "sector"
 MASTER_JSON_PATH = REPO_ROOT / "Ticker-Master.json"
 DAILY_WORKBOOK_PREFIX = "investment_data"
 DATE_FORMAT = "%m%d%Y"
 TICKER_REVIEW_PREFIX = "ticker_review"
-
-PILLAR_TARGET_PE_MULTIPLES: Dict[str, int] = {
-    "ai_power_generation": 22,
-    "ai_networking": 40,
-    "ai_memory_and_storage": 18,
-    "ai_land": 35,
-    "ai_heating_and_cooling": 28,
-    "ai_grid_and_power_transmission": 25,
-    "ai_electrical_infrastructure": 25,
-    "ai_construction": 22,
-    "ai_cybersecurity": 55,
-    "ai_semiconductor_chip_manufacturing": 22,
-    "ai_server_and_rack_systems": 18,
-    "ai_software_and_platforms": 65,
-    "ai_backup_power": 30,
-    "ai_cloud": 30,
-    "ai_fire_detection": 22,
-    "ai_water": 25,
-    "ai_insurance_and_risk": 25,
-    "ai_security": 22,
-    "ai_compute_chips": 45,
-    "default": 25,
-}
 
 KNOWN_SHEET_NAMES = {
     "AI Power Generation": "AI Power Gen",
@@ -80,7 +67,13 @@ COLUMNS = [
     "Upside %",
     "Revenue Growth %",
     "EPS Growth %",
-    "Net Cash Ratio",
+    "Gross Margin %",
+    "Net Profit Margin %",
+    "Debt/Equity",
+    "Beta",
+    "Insider Ownership %",
+    "Institutional Ownership %",
+    "Analyst Recom",
     "Investment Score",
 ]
 
@@ -92,179 +85,85 @@ class TickerContext:
     tickers: List[str]
 
 
-class FMPClient:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
+class FinvizClient:
+    def __init__(self, auth_token: str):
+        self.auth_token = auth_token
         self.session = requests.Session()
 
-    def _get(self, endpoint: str, symbol: str, symbol_param: str = "symbol") -> Optional[dict]:
-        params = {symbol_param: symbol, "apikey": self.api_key}
-        url = f"{FMP_BASE_URL}/{endpoint}"
-        response = self.session.get(url, params=params, timeout=10)
-        if not response.ok:
-            print(f"[WARN] FMP {endpoint} returned {response.status_code} for {symbol}: {response.text[:200]}")
+    def _parse_float(self, value: object) -> Optional[float]:
+        if value in (None, "", "-", "N/A"):
             return None
+        s = str(value).strip().rstrip("%").replace(",", "")
         try:
-            payload = response.json()
-        except Exception as exc:
-            print(f"[WARN] FMP {endpoint} returned invalid JSON for {symbol}: {exc}")
+            return float(s)
+        except ValueError:
             return None
-        if isinstance(payload, list) and payload:
-            return payload[0]
-        if isinstance(payload, dict):
-            return payload
-        return None
-
-    def _get_rsi(self, symbol: str) -> Optional[float]:
-        url = f"{FMP_BASE_URL}/technical-indicators/rsi"
-        response = self.session.get(
-            url,
-            params={
-                "symbol": symbol,
-                "periodLength": 10,
-                "timeframe": "1day",
-                "apikey": self.api_key,
-            },
-            timeout=10,
-        )
-        if not response.ok:
-            print(f"[WARN] FMP technical-indicators/rsi returned {response.status_code} for {symbol}: {response.text[:200]}")
-            return None
-        try:
-            payload = response.json()
-        except Exception as exc:
-            print(f"[WARN] FMP technical-indicators/rsi returned invalid JSON for {symbol}: {exc}")
-            return None
-        if isinstance(payload, list) and payload:
-            return self._to_float(payload[0].get("rsi"))
-        return None
-
-    def _to_float(self, value: object) -> Optional[float]:
-        if value in (None, ""):
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _get_forward_eps(self, symbol: str) -> Optional[float]:
-        # Primary: annual analyst estimates — field is epsAvg
-        analyst_estimates_available = False
-        try:
-            response = self.session.get(
-                f"{FMP_BASE_URL}/analyst-estimates",
-                params={"symbol": symbol, "period": "annual", "page": 0, "limit": 10, "apikey": self.api_key},
-                timeout=10,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            if isinstance(payload, list) and payload:
-                analyst_estimates_available = True
-                for row in payload:
-                    if not isinstance(row, dict):
-                        continue
-                    val = self._to_float(row.get("epsAvg"))
-                    if val is not None:
-                        return val
-        except Exception:
-            pass
-
-        # Fallback: earnings endpoint — only if analyst-estimates returned no data at all
-        if analyst_estimates_available:
-            return None
-
-        try:
-            response = self.session.get(
-                f"{FMP_BASE_URL}/earnings",
-                params={"symbol": symbol, "apikey": self.api_key},
-                timeout=10,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            if isinstance(payload, list):
-                for row in payload:
-                    if not isinstance(row, dict):
-                        continue
-                    if row.get("epsActual") is not None:
-                        continue  # already reported — skip
-                    val = self._to_float(row.get("epsEstimated"))
-                    if val is not None:
-                        return val
-        except Exception:
-            pass
-
-        return None
-
-    def _get_book_value_per_share(self, symbol: str) -> Optional[float]:
-        url = f"{FMP_BASE_URL}/ratios"
-        response = self.session.get(url, params={"symbol": symbol, "apikey": self.api_key}, timeout=10)
-        if not response.ok:
-            print(f"[WARN] FMP ratios returned {response.status_code} for {symbol}: {response.text[:200]}")
-            return None
-        try:
-            payload = response.json()
-        except Exception as exc:
-            print(f"[WARN] FMP ratios returned invalid JSON for {symbol}: {exc}")
-            return None
-        if isinstance(payload, list) and payload:
-            return self._to_float(payload[0].get("bookValuePerShare"))
-        return None
 
     def get_metrics(self, ticker: str) -> Dict[str, Optional[float]]:
-        quote = self._get("batch-quote", ticker, symbol_param="symbols") or {}
-        rsi = self._get_rsi(ticker)
-        market_cap_data = self._get("market-capitalization-batch", ticker, symbol_param="symbols") or {}
-        income = self._get("income-statement", ticker) or {}
-        growth = self._get("financial-growth", ticker) or {}
-        balance = self._get("balance-sheet-statement", ticker) or {}
-        book_value_per_share = self._get_book_value_per_share(ticker)
-        forward_eps = self._get_forward_eps(ticker)
+        url = (
+            f"{FINVIZ_BASE_URL}?v=151"
+            f"&t={ticker}"
+            f"&c={FINVIZ_COLUMNS}"
+            f"&auth={self.auth_token}"
+        )
+        try:
+            response = self.session.get(url, timeout=15)
+            response.raise_for_status()
+        except Exception as exc:
+            print(f"[WARN] Finviz request failed for {ticker}: {exc}")
+            return {}
 
-        current_price = self._to_float(quote.get("price"))
-        market_cap = self._to_float(market_cap_data.get("marketCap")) or self._to_float(quote.get("marketCap"))
+        try:
+            reader = csv.DictReader(io.StringIO(response.text))
+            rows = list(reader)
+        except Exception as exc:
+            print(f"[WARN] Finviz CSV parse failed for {ticker}: {exc}")
+            return {}
 
-        # Income statement — source for P/E, P/S, and EPS fallback
-        revenue = self._to_float(income.get("revenue"))
-        eps_diluted = self._to_float(income.get("epsdiluted")) or self._to_float(income.get("eps"))
+        if not rows:
+            print(f"[WARN] Finviz returned no data for {ticker}")
+            return {}
 
-        # Calculated ratios
-        pe_ratio = (current_price / eps_diluted) if (current_price and eps_diluted and eps_diluted > 0) else None
-        ps_ratio = (market_cap / revenue) if (market_cap and revenue and revenue > 0) else None
+        row = rows[0]
+        p = self._parse_float
 
-        cash_and_cash_equivalents = self._to_float(balance.get("cashAndCashEquivalents"))
-        total_debt = self._to_float(balance.get("totalDebt"))
-        net_debt = self._to_float(balance.get("netDebt"))
-        if net_debt is None and total_debt is not None and cash_and_cash_equivalents is not None:
-            net_debt = total_debt - cash_and_cash_equivalents
+        price = p(row.get("Price"))
+        market_cap_raw = p(row.get("Market Cap"))
+        # Finviz exports Market Cap in millions — convert to absolute dollars
+        market_cap = market_cap_raw * 1_000_000 if market_cap_raw is not None else None
 
-        revenue_growth = self._to_float(growth.get("revenueGrowth"))
-        eps_growth = self._to_float(growth.get("epsgrowth"))
-        if eps_growth is None:
-            eps_growth = self._to_float(growth.get("epsdilutedGrowth"))
+        # Revenue Growth % and EPS Growth % — prefer Q/Q (more current), 5Y as fallback
+        rev_growth_qq = p(row.get("Sales Growth Quarter Over Quarter"))
+        rev_growth_5y = p(row.get("Sales Growth Past 5 Years"))
+        rev_growth = rev_growth_qq if rev_growth_qq is not None else rev_growth_5y
+
+        eps_growth_qq = p(row.get("EPS Growth Quarter Over Quarter"))
+        eps_growth_5y = p(row.get("EPS Growth Past 5 Years"))
+        eps_growth = eps_growth_qq if eps_growth_qq is not None else eps_growth_5y
 
         return {
-            "Current Price": current_price,
-            "RSI": rsi,
-            "P/E Ratio": pe_ratio,
-            "P/S Ratio": ps_ratio,
+            "Current Price": price,
+            "RSI": p(row.get("Relative Strength Index (14)")),
+            "P/E Ratio": p(row.get("P/E")),
+            "P/S Ratio": p(row.get("P/S")),
             "Market Cap": market_cap,
-            "Forward EPS": forward_eps,
-            "TTM EPS": eps_diluted,
-            "Book Value Per Share": book_value_per_share,
-            "Revenue Growth %": revenue_growth * 100 if revenue_growth is not None else None,
-            "EPS Growth %": eps_growth * 100 if eps_growth is not None else None,
-            "Net Cash Ratio": (
-                (-net_debt) / market_cap
-                if net_debt is not None and market_cap
-                else None
-            ),
-            # Raw values preserved for the Audit tab
-            "_cash": cash_and_cash_equivalents,
-            "_total_debt": total_debt,
-            "_rev_growth_raw": revenue_growth,
-            "_eps_growth_raw": eps_growth,
-            "_revenue": revenue,
-            "_eps_diluted": eps_diluted,
+            "Finviz Target Price": p(row.get("Target Price")),
+            "EPS": p(row.get("EPS (ttm)")),
+            "Book Value Per Share": p(row.get("Book/sh")),
+            "Revenue Growth %": rev_growth,
+            "EPS Growth %": eps_growth,
+            "Gross Margin %": p(row.get("Gross Margin")),
+            "Net Profit Margin %": p(row.get("Profit Margin")),
+            "Debt/Equity": p(row.get("Total Debt/Equity")),
+            "Beta": p(row.get("Beta")),
+            "Insider Ownership %": p(row.get("Insider Ownership")),
+            "Institutional Ownership %": p(row.get("Institutional Ownership")),
+            "Analyst Recom": p(row.get("Analyst Recom")),
+            # Raw growth values for audit tab
+            "_rev_growth_qq": rev_growth_qq,
+            "_rev_growth_5y": rev_growth_5y,
+            "_eps_growth_qq": eps_growth_qq,
+            "_eps_growth_5y": eps_growth_5y,
         }
 
 
@@ -385,11 +284,6 @@ def sheet_name_for_pillar(pillar: str) -> str:
     return " ".join(abbreviated)[:31]
 
 
-def pillar_pe_multiple(pillar: str) -> int:
-    key = pillar.lower().replace(" ", "_").replace("-", "_")
-    return PILLAR_TARGET_PE_MULTIPLES.get(key, PILLAR_TARGET_PE_MULTIPLES["default"])
-
-
 def _graham_number(eps: Optional[float], bvps: Optional[float]) -> Optional[float]:
     if eps is None or bvps is None or eps <= 0 or bvps <= 0:
         return None
@@ -414,16 +308,18 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     rev_score = norm(record.get("Revenue Growth %"), -50.0, 100.0)       # 20%
     eps_score = norm(record.get("EPS Growth %"), -50.0, 100.0)           # 10%
 
-    # Financial Quality (10%)
-    ncr_score = norm(record.get("Net Cash Ratio"), -1.0, 2.0)            # 10%
+    # Financial Quality (25%)
+    gm_score = norm(record.get("Gross Margin %"), 0.0, 100.0)            # 10%
+    npm_score = norm(record.get("Net Profit Margin %"), -20.0, 40.0)     # 10%
+    de_score = norm_inv(record.get("Debt/Equity"), 0.0, 3.0)             # 5%
 
     # Valuation (25%)
     pe = record.get("P/E Ratio")
     pe_score: Optional[float] = 0.0 if (pe is not None and pe <= 0) else norm_inv(pe, 0.0, 60.0)  # 5%
     ps_score = norm_inv(record.get("P/S Ratio"), 0.0, 30.0)              # 10%
-    upside_score = norm(record.get("Upside %"), -30.0, 100.0)  # 10%
+    upside_score = norm(record.get("Upside %"), -30.0, 100.0)            # 10%
 
-    # Entry Timing (15%)
+    # Entry Timing (20%)
     rsi = record.get("RSI")
     # Score highest at RSI=30 (oversold), linearly to 0 at RSI=80 (overbought)
     rsi_score: Optional[float] = clamp((80.0 - rsi) / 50.0 * 100.0, 0.0, 100.0) if rsi is not None else None  # 10%
@@ -435,16 +331,22 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
         bz_score: Optional[float] = clamp((1.25 - ratio) / 0.25 * 100.0, 0.0, 100.0)
     else:
         bz_score = None
+    # Analyst Recom: 1.0=Strong Buy (best), 5.0=Strong Sell (worst)
+    recom = record.get("Analyst Recom")
+    recom_score: Optional[float] = clamp((5.0 - recom) / 4.0 * 100.0, 0.0, 100.0) if recom is not None else None  # 5%
 
     weighted = [
         (rev_score, 0.20),
         (eps_score, 0.10),
-        (ncr_score, 0.10),
+        (gm_score, 0.10),
+        (npm_score, 0.10),
+        (de_score, 0.05),
         (pe_score, 0.05),
         (ps_score, 0.10),
         (upside_score, 0.10),
         (rsi_score, 0.10),
         (bz_score, 0.05),
+        (recom_score, 0.05),
     ]
 
     total_weight = sum(w for s, w in weighted if s is not None)
@@ -456,7 +358,7 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
 def fetch_records_for_pillar(
     context: TickerContext,
-    client: Optional[FMPClient],
+    client: Optional[FinvizClient],
 ) -> List[Dict[str, Optional[float]]]:
     records: List[Dict[str, Optional[float]]] = []
     for ticker in context.tickers:
@@ -464,37 +366,26 @@ def fetch_records_for_pillar(
         if client is not None:
             try:
                 metrics = client.get_metrics(ticker)
-                time.sleep(0.15)
+                time.sleep(0.5)
             except Exception as exc:
                 print(f"[WARN] Failed to fetch metrics for {ticker}: {exc}")
                 metrics = {}
 
         current_price = metrics.get("Current Price")
-        forward_eps = metrics.get("Forward EPS")
-        ttm_eps = metrics.get("TTM EPS")
+        eps = metrics.get("EPS")
         bvps = metrics.get("Book Value Per Share")
+        finviz_target = metrics.get("Finviz Target Price")
 
-        # Target Price via Forward P/E; fall back to TTM EPS
-        eps_used = forward_eps if (forward_eps is not None and forward_eps != 0) else ttm_eps
-        eps_source = (
-            "Forward" if (forward_eps is not None and forward_eps != 0)
-            else ("TTM" if (ttm_eps is not None and ttm_eps != 0) else "None")
-        )
-        pe_multiple = pillar_pe_multiple(context.pillar)
-        if eps_used is not None and eps_used != 0:
-            target_price: Optional[float] = eps_used * pe_multiple
-        else:
-            target_price = None
-            print(f"[WARN] Target Price unavailable for {ticker} — missing EPS data")
+        target_price = finviz_target
+        if target_price is None:
+            print(f"[WARN] Target Price unavailable for {ticker} — no analyst consensus from Finviz")
 
-        # Upside % as a percentage (e.g. 25.0 for 25%)
         if target_price is not None and current_price not in (None, 0):
             upside_pct: Optional[float] = ((target_price - current_price) / current_price) * 100
         else:
             upside_pct = None
 
-        # Graham Number and undervaluation flag
-        graham = _graham_number(eps_used, bvps)
+        graham = _graham_number(eps, bvps)
         if graham is None:
             graham_undervalued: Optional[bool] = None
         else:
@@ -513,20 +404,21 @@ def fetch_records_for_pillar(
             "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
             "EPS Growth %": metrics.get("EPS Growth %"),
-            "Net Cash Ratio": metrics.get("Net Cash Ratio"),
-            # Audit fields — raw API values and intermediates, not written to pillar tabs
-            "_audit_forward_eps": forward_eps,
-            "_audit_ttm_eps": ttm_eps,
-            "_audit_eps_source": eps_source,
-            "_audit_eps_used": eps_used,
-            "_audit_pillar_pe": pe_multiple,
+            "Gross Margin %": metrics.get("Gross Margin %"),
+            "Net Profit Margin %": metrics.get("Net Profit Margin %"),
+            "Debt/Equity": metrics.get("Debt/Equity"),
+            "Beta": metrics.get("Beta"),
+            "Insider Ownership %": metrics.get("Insider Ownership %"),
+            "Institutional Ownership %": metrics.get("Institutional Ownership %"),
+            "Analyst Recom": metrics.get("Analyst Recom"),
+            # Audit fields
+            "_audit_eps": eps,
             "_audit_book_value_per_share": bvps,
             "_audit_graham_number": graham,
-            "_audit_cash": metrics.get("_cash"),
-            "_audit_total_debt": metrics.get("_total_debt"),
-            "_audit_revenue": metrics.get("_revenue"),
-            "_audit_rev_growth_raw": metrics.get("_rev_growth_raw"),
-            "_audit_eps_growth_raw": metrics.get("_eps_growth_raw"),
+            "_audit_rev_growth_qq": metrics.get("_rev_growth_qq"),
+            "_audit_rev_growth_5y": metrics.get("_rev_growth_5y"),
+            "_audit_eps_growth_qq": metrics.get("_eps_growth_qq"),
+            "_audit_eps_growth_5y": metrics.get("_eps_growth_5y"),
         }
         record["Investment Score"] = compute_investment_score(record)
         records.append(record)
@@ -567,12 +459,13 @@ def write_master_sheet(
 
 AUDIT_COLUMNS = [
     "Pillar", "Ticker", "Current Price",
-    "Forward EPS", "EPS Diluted (Annual)", "EPS Source", "EPS Used", "Pillar P/E Multiple",
-    "Book Value Per Share", "Cash", "Total Debt", "Market Cap", "Revenue",
-    "Revenue Growth (raw)", "EPS Growth (raw)",
+    "EPS (ttm)", "Book Value Per Share", "Graham Number", "Graham Undervalued",
+    "Market Cap", "Target Price (Analyst)",
+    "Rev Growth Q/Q %", "Rev Growth 5Y %", "EPS Growth Q/Q %", "EPS Growth 5Y %",
     "P/E Ratio", "P/S Ratio", "RSI",
-    "Buy Zone", "Target Price", "Graham Number", "Graham Undervalued",
-    "Upside %", "Net Cash Ratio", "Revenue Growth %", "EPS Growth %",
+    "Buy Zone", "Upside %",
+    "Gross Margin %", "Net Profit Margin %", "Debt/Equity",
+    "Beta", "Insider Ownership %", "Institutional Ownership %", "Analyst Recom",
     "Investment Score",
 ]
 
@@ -596,29 +489,28 @@ def write_audit_sheet(
                 "Pillar": context.pillar,
                 "Ticker": record.get("Ticker"),
                 "Current Price": record.get("Current Price"),
-                "Forward EPS": record.get("_audit_forward_eps"),
-                "EPS Diluted (Annual)": record.get("_audit_ttm_eps"),
-                "EPS Source": record.get("_audit_eps_source"),
-                "EPS Used": record.get("_audit_eps_used"),
-                "Pillar P/E Multiple": record.get("_audit_pillar_pe"),
+                "EPS (ttm)": record.get("_audit_eps"),
                 "Book Value Per Share": record.get("_audit_book_value_per_share"),
-                "Cash": record.get("_audit_cash"),
-                "Total Debt": record.get("_audit_total_debt"),
+                "Graham Number": record.get("_audit_graham_number"),
+                "Graham Undervalued": record.get("Graham Undervalued"),
                 "Market Cap": record.get("Market Cap"),
-                "Revenue": record.get("_audit_revenue"),
-                "Revenue Growth (raw)": record.get("_audit_rev_growth_raw"),
-                "EPS Growth (raw)": record.get("_audit_eps_growth_raw"),
+                "Target Price (Analyst)": record.get("Target Price"),
+                "Rev Growth Q/Q %": record.get("_audit_rev_growth_qq"),
+                "Rev Growth 5Y %": record.get("_audit_rev_growth_5y"),
+                "EPS Growth Q/Q %": record.get("_audit_eps_growth_qq"),
+                "EPS Growth 5Y %": record.get("_audit_eps_growth_5y"),
                 "P/E Ratio": record.get("P/E Ratio"),
                 "P/S Ratio": record.get("P/S Ratio"),
                 "RSI": record.get("RSI"),
                 "Buy Zone": record.get("Buy Zone"),
-                "Target Price": record.get("Target Price"),
-                "Graham Number": record.get("_audit_graham_number"),
-                "Graham Undervalued": record.get("Graham Undervalued"),
                 "Upside %": record.get("Upside %"),
-                "Net Cash Ratio": record.get("Net Cash Ratio"),
-                "Revenue Growth %": record.get("Revenue Growth %"),
-                "EPS Growth %": record.get("EPS Growth %"),
+                "Gross Margin %": record.get("Gross Margin %"),
+                "Net Profit Margin %": record.get("Net Profit Margin %"),
+                "Debt/Equity": record.get("Debt/Equity"),
+                "Beta": record.get("Beta"),
+                "Insider Ownership %": record.get("Insider Ownership %"),
+                "Institutional Ownership %": record.get("Institutional Ownership %"),
+                "Analyst Recom": record.get("Analyst Recom"),
                 "Investment Score": record.get("Investment Score"),
             }
             for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
@@ -640,32 +532,14 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
         (
             "Buy Zone",
             "Current Price × 0.80",
-            "Take Current Price from the Audit tab and multiply by 0.80. Result should match Buy Zone.",
-            "Represents a 20% discount to today's price — a target entry level if the stock pulls back.",
-        ),
-        (
-            "P/E Ratio",
-            "Current Price ÷ EPS Diluted (Annual)",
-            "Divide Current Price by EPS Diluted (Annual) from the Audit tab. Result should match P/E Ratio.",
-            "Both values sourced directly from FMP — Current Price from batch-quote, EPS from income-statement (epsdiluted).",
-        ),
-        (
-            "P/S Ratio",
-            "Market Cap ÷ Revenue",
-            "Divide Market Cap by Revenue from the Audit tab. Result should match P/S Ratio.",
-            "Market Cap from FMP market-capitalization-batch. Revenue from FMP income-statement (most recent annual period).",
-        ),
-        (
-            "Target Price",
-            "EPS Used × Pillar P/E Multiple",
-            "Multiply EPS Used by Pillar P/E Multiple (both in Audit tab). Result should match Target Price.",
-            "EPS Source column shows whether Forward EPS or Annual Diluted EPS was used. Pillar P/E multiples are defined in PILLAR_TARGET_PE_MULTIPLES in data_engine.py.",
+            "Take Current Price and multiply by 0.80. Result should match Buy Zone.",
+            "Represents a 20% discount to today's price — a disciplined entry target if the stock pulls back.",
         ),
         (
             "Graham Number",
-            "√(22.5 × EPS Used × Book Value Per Share)",
-            "Multiply 22.5 × EPS Used × Book Value Per Share (all in Audit tab), then take the square root.",
-            "Only valid when both EPS and Book Value Per Share are positive. A classic Benjamin Graham intrinsic value estimate.",
+            "√(22.5 × EPS (ttm) × Book Value Per Share)",
+            "Multiply 22.5 × EPS × Book/sh (all in Audit tab), then take the square root.",
+            "Only valid when both EPS and Book Value Per Share are positive. Classic Benjamin Graham intrinsic value estimate.",
         ),
         (
             "Graham Undervalued",
@@ -677,29 +551,41 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
             "Upside %",
             "((Target Price − Current Price) / Current Price) × 100",
             "Subtract Current Price from Target Price, divide by Current Price, multiply by 100.",
-            "Expressed as a percentage (e.g. 25.0 = 25% upside). Negative means the model sees downside at the current price.",
-        ),
-        (
-            "Net Cash Ratio",
-            "(Cash − Total Debt) / Market Cap",
-            "Subtract Total Debt from Cash, then divide by Market Cap (all in Audit tab).",
-            "Positive = net cash position. Negative = net debt. Sourced from FMP balance-sheet-statement.",
+            "Target Price is the analyst consensus from Finviz. Negative Upside % means the consensus sees downside.",
         ),
         (
             "Revenue Growth %",
-            "Revenue Growth (raw) × 100",
-            "Take Revenue Growth (raw) from Audit tab and multiply by 100.",
-            "FMP returns growth as a decimal (e.g. 0.185). Multiplying by 100 gives 18.5%.",
+            "Sales Growth Q/Q % from Finviz (5Y used as fallback if Q/Q unavailable)",
+            "Check Rev Growth Q/Q % and Rev Growth 5Y % in the Audit tab. The column uses Q/Q when available.",
+            "Sourced from Finviz export field 'Sales Growth Quarter Over Quarter'.",
         ),
         (
             "EPS Growth %",
-            "EPS Growth (raw) × 100",
-            "Take EPS Growth (raw) from Audit tab and multiply by 100.",
-            "FMP returns growth as a decimal. Multiplying by 100 gives the percentage.",
+            "EPS Growth Q/Q % from Finviz (5Y used as fallback if Q/Q unavailable)",
+            "Check EPS Growth Q/Q % and EPS Growth 5Y % in the Audit tab. The column uses Q/Q when available.",
+            "Sourced from Finviz export field 'EPS Growth Quarter Over Quarter'.",
+        ),
+        (
+            "Gross Margin %",
+            "Gross Margin % sourced directly from Finviz",
+            "Value in column should match Gross Margin field in Finviz screener for the ticker.",
+            "Finviz export field 'Gross Margin'. Expressed as a percentage (e.g. 68.5 = 68.5%).",
+        ),
+        (
+            "Net Profit Margin %",
+            "Net Profit Margin % sourced directly from Finviz",
+            "Value in column should match Profit Margin field in Finviz screener for the ticker.",
+            "Finviz export field 'Profit Margin'. Net income divided by revenue.",
+        ),
+        (
+            "Analyst Recom",
+            "Analyst consensus recommendation score from Finviz (1.0 = Strong Buy, 5.0 = Strong Sell)",
+            "Compare to Analyst Recom field in Finviz screener for the ticker.",
+            "Lower number = more bullish consensus. Score of 1.0 is maximum conviction buy; 5.0 is maximum sell.",
         ),
         (
             "Investment Score",
-            "Weighted composite of 10 metrics, each normalized 0–100, then combined by weight.",
+            "Weighted composite of 11 metrics, each normalized 0–100, then combined by weight.",
             "See the component weight table below. Each metric can be traced back to the Audit tab.",
             "Missing metrics are excluded and the remaining weights are rescaled proportionally.",
         ),
@@ -723,12 +609,15 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
     score_components = [
         ("Growth (30%)", "Revenue Growth %", "20%", "Higher is better", "-50% to 100%"),
         ("Growth (30%)", "EPS Growth %", "10%", "Higher is better", "-50% to 100%"),
-        ("Financial Quality (10%)", "Net Cash Ratio", "10%", "Higher is better", "-1.0 to 2.0"),
-        ("Valuation (25%)", "P/S Ratio", "10%", "Lower is better", "0 to 30 (capped; above 30 = score 0)"),
-        ("Valuation (25%)", "Upside %", "10%", "Higher is better", "-30% to 100%"),
-        ("Valuation (25%)", "P/E Ratio", "5%", "Lower is better", "0 to 60 (capped; above 60 or negative = score 0)"),
-        ("Entry Timing (15%)", "RSI", "10%", "Lower is better (oversold favored)", "Score 100 at RSI=30, score 0 at RSI=80+"),
-        ("Entry Timing (15%)", "Buy Zone Proximity", "5%", "Closer to Buy Zone = higher score", "Score 100 at/below Buy Zone, score 0 when 25%+ above it"),
+        ("Financial Quality (25%)", "Gross Margin %", "10%", "Higher is better", "0% to 100%"),
+        ("Financial Quality (25%)", "Net Profit Margin %", "10%", "Higher is better", "-20% to 40%"),
+        ("Financial Quality (25%)", "Debt/Equity", "5%", "Lower is better", "0 to 3.0 (capped; above 3 = score 0)"),
+        ("Valuation (20%)", "P/S Ratio", "10%", "Lower is better", "0 to 30 (capped; above 30 = score 0)"),
+        ("Valuation (20%)", "Upside %", "10%", "Higher is better", "-30% to 100%"),
+        ("Valuation (20%)", "P/E Ratio", "5%", "Lower is better", "0 to 60 (capped; above 60 or negative = score 0)"),  # noqa
+        ("Entry Timing (20%)", "RSI", "10%", "Lower is better (oversold favored)", "Score 100 at RSI=30, score 0 at RSI=80+"),  # noqa
+        ("Entry Timing (20%)", "Buy Zone Proximity", "5%", "Closer to Buy Zone = higher score", "Score 100 at/below Buy Zone, score 0 when 25%+ above it"),  # noqa
+        ("Entry Timing (20%)", "Analyst Recom", "5%", "Lower is better (1=Strong Buy)", "1.0 (Strong Buy) → score 100; 5.0 (Strong Sell) → score 0"),  # noqa
     ]
 
     for comp in score_components:
@@ -777,7 +666,7 @@ def build_summary(records_by_context: List[Tuple[TickerContext, List[Dict[str, O
     data_frame = pd.DataFrame(all_records)
     data_frame = data_frame.sort_values(by=["Upside %", "Ticker"], ascending=[False, True], na_position="last")
     top_candidates = data_frame.head(5)[
-        ["Sector", "Pillar", "Ticker", "Upside %", "Revenue Growth %", "EPS Growth %", "Gross Margin %", "Net Cash Ratio"]
+        ["Sector", "Pillar", "Ticker", "Upside %", "Revenue Growth %", "EPS Growth %", "Gross Margin %"]
     ].to_dict("records")
 
     return {
@@ -792,41 +681,16 @@ def build_summary(records_by_context: List[Tuple[TickerContext, List[Dict[str, O
 # Uncomment this function and the call site in run() to re-enable.
 #
 # def generate_claude_ticker_review(summary: Dict[str, object], date_stamp: str, sector: str) -> Optional[str]:
-#     api_key = os.getenv("ANTHROPIC_API_KEY")
-#     if not api_key:
-#         return None
-#
-#     try:
-#         import anthropic
-#     except Exception:
-#         return None
-#
-#     client = anthropic.Anthropic(api_key=api_key)
-#     prompt = (
-#         f"Sector: {sector}. Data date: {date_stamp}. "
-#         f"Structured data: {json.dumps(summary.get('all_records', []), default=str)}. "
-#         "Given this data, use deep research to assess similar stocks and please provide 5 (Max) tickers to review."
-#     )
-#     response = client.messages.create(
-#         model="claude-sonnet-4-6",
-#         max_tokens=512,
-#         system="You are a buy-side investment research assistant.",
-#         messages=[{"role": "user", "content": prompt}],
-#     )
-#     return next((block.text for block in response.content if block.type == "text"), None)
+#     ...
 
 
-def write_text(path: Path, content: str) -> None:
-    path.write_text(content.rstrip() + "\n", encoding="utf-8")
-
-
-def run(api_key: Optional[str]) -> Dict[str, object]:
+def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
     master_config = load_master_config()
     sync_master_files(master_config)
     ensure_sector_directories(master_config.keys())
 
-    client = FMPClient(api_key) if api_key else None
+    client = FinvizClient(auth_token) if auth_token else None
     date_stamp = datetime.now().strftime(DATE_FORMAT)
 
     contexts_by_sector: Dict[str, List[TickerContext]] = {}
@@ -857,13 +721,6 @@ def run(api_key: Optional[str]) -> Dict[str, object]:
         workbook.save(daily_workbook_path)
         workbook.close()
 
-        # Claude ticker review disabled — uncomment to re-enable once generate_claude_ticker_review is restored.
-        # summary = build_summary(records_by_context)
-        # ticker_review_text = generate_claude_ticker_review(summary, date_stamp, sector)
-        # if ticker_review_text:
-        #     ticker_review_path = sector_ticker_review_dir(sector) / f"{TICKER_REVIEW_PREFIX}_{date_stamp}.txt"
-        #     write_text(ticker_review_path, ticker_review_text)
-
         outputs["sectors"][sector] = {
             "daily_workbook": str(daily_workbook_path),
         }
@@ -872,15 +729,17 @@ def run(api_key: Optional[str]) -> Dict[str, object]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the investment engine daily refresh")
-    parser.add_argument("--api-key", default=None, help="Override FMP API key")
+    parser = argparse.ArgumentParser(description="Run the investment engine weekly refresh")
+    parser.add_argument("--auth-token", default=None, help="Override Finviz auth token")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    api_key = args.api_key or os.getenv("FMP") or os.getenv("FMP_API_KEY")
-    outputs = run(api_key=api_key)
+    auth_token = args.auth_token or os.getenv("FINVIZ")
+    if not auth_token:
+        print("[WARN] FINVIZ not set — all Finviz fields will be empty")
+    outputs = run(auth_token=auth_token)
     print(json.dumps(outputs, indent=2))
 
 
