@@ -56,19 +56,25 @@ The engine will:
 
 Open `investment-engine/sector/<SECTOR>/stock-data/investment_data_MMDDYYYY.xlsx`:
 
-- **Pillar Map** tab: Maps pillar names to their shortened sheet names (Excel's 31-char limit)
-- **AI [Sub-pillar]** tabs: Full scored dataset for that pillar
+| Tab | What's in it |
+|---|---|
+| **Investment Master** | All tickers across all pillars sorted by Investment Score descending |
+| **AI [Sub-pillar]** | Full scored dataset for that pillar |
+| **Audit** | Every raw API value and intermediate calculation — use this to verify any computed number |
+| **Formula Guide** | Each formula written out plainly with verification steps and the full Investment Score weight table |
 
 Key columns to note:
 
 | Column | Notes |
 |---|---|
 | **Investment Score** | 0–100 composite. Higher = more attractive. Missing metrics are excluded and weights rescaled. |
-| **Target Price** | Forward EPS × Pillar P/E multiple. Logs a warning to console if EPS is unavailable. |
+| **Target Price** | EPS Used × Pillar P/E multiple. EPS source (Forward / TTM) shown in Audit tab. |
 | **Graham Undervalued** | `True` if Current Price < Graham Number. `None` if Book Value or EPS data is missing. |
 | **Upside %** | `((Target Price − Current Price) / Current Price) × 100` |
 | **RSI** | FMP technical indicator, period 10, 1-day timeframe |
 | **Backlog Growth %** | Not auto-populated — fill in from your own research as needed |
+
+**To verify any number:** open the Audit tab, find the ticker's row, and check the raw inputs. The Formula Guide tab shows exactly how to reproduce each calculation from those inputs.
 
 ## 7. Set up automation (optional)
 
@@ -78,7 +84,7 @@ To run on a schedule via GitHub Actions:
 2. Go to **Settings → Secrets and variables → Actions** and add:
    - `FMP` — your FMP API key
 3. The workflow runs weekly on Sundays at 21:00 UTC (4:00 PM EST)
-   - Manual trigger: **Actions tab → "Daily Investment Engine Refresh" → "Run workflow"**
+   - Manual trigger: **Actions tab → "Investment Engine" → "Run workflow"** (workflow file: `data_engine.yml`)
 
 ## Troubleshooting
 

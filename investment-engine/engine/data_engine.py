@@ -881,21 +881,10 @@ def run(api_key: Optional[str]) -> Dict[str, object]:
         workbook = Workbook()
         workbook.remove(workbook.active)
 
-        mapping_sheet = workbook.create_sheet(title="Pillar Map", index=0)
-        mapping_sheet.cell(row=1, column=1, value="Sector")
-        mapping_sheet.cell(row=1, column=2, value="Pillar")
-        mapping_sheet.cell(row=1, column=3, value="Sheet Name")
-
-        pillar_row = 2
         records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]] = []
 
         for context in sector_contexts:
             sheet_name = sheet_name_for_pillar(context.pillar)
-            mapping_sheet.cell(row=pillar_row, column=1, value=context.sector)
-            mapping_sheet.cell(row=pillar_row, column=2, value=context.pillar)
-            mapping_sheet.cell(row=pillar_row, column=3, value=sheet_name)
-            pillar_row += 1
-
             records = fetch_records_for_pillar(context, client)
             write_records_to_sheet(workbook, sheet_name, records)
             records_by_context.append((context, records))
