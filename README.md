@@ -82,8 +82,7 @@ Each workbook contains the following tabs in order:
 | Upside % | Calculated — `((Target Price − Current Price) / Current Price) × 100` |
 | Revenue Growth % | FMP `financial-growth` |
 | EPS Growth % | FMP `financial-growth` |
-| Backlog Growth % | Not auto-populated — fill in from your own research |
-| Gross Margin % | FMP `ratios-ttm-bulk` |
+| Gross Margin % | Calculated — `Gross Profit Ratio × 100` from FMP `income-statement` |
 | Net Cash Ratio | Calculated — `(Cash − Total Debt) / Market Cap` |
 | Investment Score | Calculated — weighted 0–100 composite score (see below) |
 
@@ -94,8 +93,8 @@ The Audit tab exposes every raw API value and intermediate input that feeds into
 | Column group | Columns |
 |---|---|
 | Identifiers | Pillar, Ticker |
-| EPS inputs | Forward EPS, TTM EPS, EPS Source (Forward / TTM / None), EPS Used, Pillar P/E Multiple |
-| Valuation inputs | Current Price, Book Value Per Share, Cash, Total Debt, Market Cap |
+| EPS inputs | Forward EPS, EPS Diluted (Annual), EPS Source (Forward / Annual), EPS Used, Pillar P/E Multiple |
+| Valuation inputs | Current Price, Book Value Per Share, Cash, Total Debt, Market Cap, Revenue |
 | Growth inputs (raw decimals) | Revenue Growth (raw), EPS Growth (raw), Gross Margin (raw) |
 | Ratio inputs | P/E Ratio, P/S Ratio, RSI |
 | Computed results | Buy Zone, Target Price, Graham Number, Graham Undervalued, Upside %, Net Cash Ratio, Revenue Growth %, EPS Growth %, Gross Margin %, Investment Score |
@@ -112,9 +111,8 @@ A weighted 0–100 ranking designed to identify the most attractive investment o
 
 | Category | Metric | Weight |
 |---|---|---|
-| **Growth (35%)** | Revenue Growth % | 20% |
+| **Growth (30%)** | Revenue Growth % | 20% |
 | | EPS Growth % | 10% |
-| | Backlog Growth % | 5% |
 | **Financial Quality (25%)** | Gross Margin % | 15% |
 | | Net Cash Ratio | 10% |
 | **Valuation (25%)** | P/S Ratio | 10% |
@@ -140,7 +138,7 @@ Target Price = EPS Used × Pillar P/E Multiple
 2. Earnings estimate — FMP `earnings` (field `epsEstimated`, future quarters only; only attempted if `analyst-estimates` returned no data at all)
 3. TTM EPS — FMP `ratios-ttm-bulk` (field `epsTTM`)
 
-The EPS source actually used is recorded in the `EPS Source` column of the Audit tab. If all three are unavailable or zero, `Target Price` is set to `None` and a warning is printed:
+The EPS source used is recorded in the `EPS Source` column of the Audit tab (`Forward` or `Annual`). If no EPS is available, `Target Price` is set to `None` and a warning is printed:
 ```
 [WARN] Target Price unavailable for {TICKER} — missing EPS data
 ```
@@ -191,9 +189,8 @@ The Graham Number intermediate value is visible in the Audit tab for verificatio
 | `batch-quote` | Current Price |
 | `technical-indicators/rsi` | RSI |
 | `market-capitalization-batch` | Market Cap |
-| `ratios-ttm-bulk` | P/E, P/S, Gross Margin, TTM EPS |
 | `financial-growth` | Revenue Growth, EPS Growth |
-| `income-statement` | Gross Margin (fallback only, when `ratios-ttm-bulk` is missing it) |
+| `income-statement` | Revenue, EPS Diluted, Gross Profit Ratio (source for P/E, P/S, Gross Margin %) |
 | `balance-sheet-statement` | Cash, Total Debt (for Net Cash Ratio) |
 | `analyst-estimates` | Forward EPS (annual, `epsAvg`) |
 | `earnings` | Forward EPS fallback (`epsEstimated`; only called when analyst-estimates has no data) |

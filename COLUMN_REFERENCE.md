@@ -53,27 +53,31 @@ This document covers every column generated in the workbook, including what it m
 
 ## P/E Ratio
 
-**What it means:** Price-to-Earnings ratio (trailing twelve months). Measures how much investors are paying per dollar of earnings. Sourced from FMP `ratios-ttm-bulk`.
+**What it means:** Price-to-Earnings ratio. Measures how much investors are paying per dollar of earnings. Calculated from Current Price and annual diluted EPS sourced from FMP `income-statement`.
 
-**Values:** Positive or negative float. `None` if not available. Negative P/E means the company is currently unprofitable.
+**Formula:** `P/E Ratio = Current Price ÷ EPS Diluted (Annual)`
+
+**Values:** Positive float. `None` if EPS is unavailable or zero. Negative result means EPS is negative (company is unprofitable) — these are capped to 0 in the Investment Score.
 
 | Range | What it means | Investment signal |
 |---|---|---|
-| Negative | Company is losing money | Caution — no earnings base |
+| Negative / 0 | Company is losing money | Caution — no earnings base |
 | < 20 | Cheap relative to earnings | **Very attractive** (rare for AI stocks) |
 | 20–40 | Reasonable for established tech | **Attractive** |
 | 40–80 | Typical for high-growth AI plays | Reasonable — check growth rate |
 | > 80 | Expensive, priced for perfection | Elevated risk — needs strong growth to justify |
 
-**Ideal for this universe:** Below 40 is attractive. The Investment Score caps the P/E component at 60 — anything at or above that scores 0. Negative P/E also scores 0. High P/E does not automatically disqualify a fast-grower, but it leaves no margin for error.
+**Ideal for this universe:** Below 40 is attractive. The Investment Score caps the P/E component at 60 — anything at or above that scores 0. High P/E does not automatically disqualify a fast-grower, but it leaves no margin for error.
 
 ---
 
 ## P/S Ratio
 
-**What it means:** Price-to-Sales ratio (trailing twelve months). Measures market cap relative to revenue. Useful for companies that are not yet profitable. Sourced from FMP `ratios-ttm-bulk`.
+**What it means:** Price-to-Sales ratio. Measures market cap relative to revenue. Useful for companies that are not yet profitable. Calculated from Market Cap and Revenue sourced from FMP `income-statement`.
 
-**Values:** Positive float. `None` if not available.
+**Formula:** `P/S Ratio = Market Cap ÷ Revenue`
+
+**Values:** Positive float. `None` if revenue is unavailable or zero.
 
 | Range | What it means | Investment signal |
 |---|---|---|
@@ -99,7 +103,7 @@ This document covers every column generated in the workbook, including what it m
 | Mid Cap | $2B – $10B |
 | Small Cap | < $2B |
 
-**Investment context:** Most tickers in this universe are large or mega cap. Market Cap is used internally to compute the Net Cash Ratio and is not scored directly. Smaller market caps carry more growth potential but also more volatility and liquidity risk.
+**Investment context:** Most tickers in this universe are large or mega cap. Market Cap is used internally to compute the Net Cash Ratio and P/S Ratio and is not scored directly. Smaller market caps carry more growth potential but also more volatility and liquidity risk.
 
 ---
 
@@ -119,12 +123,12 @@ This document covers every column generated in the workbook, including what it m
 
 **What it means:** An estimated fair value for the stock based on expected earnings and a pillar-appropriate P/E multiple.
 
-**Formula:** `Target Price = EPS × Pillar P/E Multiple`
+**Formula:** `Target Price = EPS Used × Pillar P/E Multiple`
 
 **EPS source priority:**
 1. Forward EPS from analyst consensus (`analyst-estimates`, field `epsAvg`)
-2. Earnings estimate for the next unreported quarter (`earnings`, field `epsEstimated`)
-3. TTM EPS from `ratios-ttm-bulk` (fallback)
+2. Earnings estimate for the next unreported quarter (`earnings`, field `epsEstimated`; only attempted if analyst-estimates has no data)
+3. Annual diluted EPS from `income-statement` (final fallback)
 
 **Values:** Positive float. `None` if no EPS data is available for the ticker.
 
@@ -213,26 +217,11 @@ This document covers every column generated in the workbook, including what it m
 
 ---
 
-## Backlog Growth %
-
-**What it means:** Year-over-year percentage change in the company's contract backlog or remaining performance obligations (RPO). This metric is not available from FMP and must be filled in manually from earnings reports or investor presentations.
-
-**Values:** Float percentage if filled in. Blank by default.
-
-| Range | Investment signal |
-|---|---|
-| > 20% | **Strong future revenue visibility** |
-| 10–20% | Healthy |
-| 0–10% | Slowing demand |
-| Negative | Backlog shrinking — potential revenue headwind |
-
-**Ideal:** ≥ 15%. Most relevant for software, cloud infrastructure, and construction/electrical pillars that carry multi-year contracts. Weight in the Investment Score is 5% — excluded from scoring when blank, with remaining weights rescaled.
-
----
-
 ## Gross Margin %
 
-**What it means:** The percentage of revenue retained after subtracting the cost of goods sold. A measure of pricing power and business efficiency. Sourced from FMP `ratios-ttm-bulk`.
+**What it means:** The percentage of revenue retained after subtracting the cost of goods sold. A measure of pricing power and business efficiency. Calculated from FMP `income-statement` (`grossProfitRatio` × 100).
+
+**Formula:** `Gross Margin % = Gross Profit Ratio × 100`
 
 **Values:** Float percentage (e.g., `68.5` = 68.5%). Can be `None`.
 
@@ -280,16 +269,15 @@ Data sourced from FMP `balance-sheet-statement`.
 
 | Category | Metric | Weight |
 |---|---|---|
-| Growth (35%) | Revenue Growth % | 20% |
+| Growth (30%) | Revenue Growth % | 20% |
 | | EPS Growth % | 10% |
-| | Backlog Growth % | 5% |
 | Financial Quality (25%) | Gross Margin % | 15% |
 | | Net Cash Ratio | 10% |
 | Valuation (25%) | P/S Ratio | 10% |
 | | Upside % | 10% |
 | | P/E Ratio | 5% |
-| Entry Timing (15%) | RSI | 10% |
-| | Buy Zone Proximity | 5% |
+| Entry Timing (20%) | RSI | 10% |
+| | Buy Zone Proximity | 10% |
 
 | Score Range | Interpretation |
 |---|---|

@@ -72,7 +72,6 @@ Key columns to note:
 | **Graham Undervalued** | `True` if Current Price < Graham Number. `None` if Book Value or EPS data is missing. |
 | **Upside %** | `((Target Price − Current Price) / Current Price) × 100` |
 | **RSI** | FMP technical indicator, period 10, 1-day timeframe |
-| **Backlog Growth %** | Not auto-populated — fill in from your own research as needed |
 
 **To verify any number:** open the Audit tab, find the ticker's row, and check the raw inputs. The Formula Guide tab shows exactly how to reproduce each calculation from those inputs.
 

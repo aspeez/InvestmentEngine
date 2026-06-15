@@ -80,7 +80,6 @@ COLUMNS = [
     "Upside %",
     "Revenue Growth %",
     "EPS Growth %",
-    "Backlog Growth %",
     "Gross Margin %",
     "Net Cash Ratio",
     "Investment Score",
@@ -98,7 +97,6 @@ class FMPClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.session = requests.Session()
-        self._ratios_bulk_cache: Optional[Dict[str, dict]] = None
 
     def _get(self, endpoint: str, symbol: str, symbol_param: str = "symbol") -> Optional[dict]:
         params = {symbol_param: symbol, "apikey": self.api_key}
@@ -149,46 +147,6 @@ class FMPClient:
             return float(value)
         except (TypeError, ValueError):
             return None
-
-    def _get_ratios_ttm_bulk(self) -> Dict[str, dict]:
-        if self._ratios_bulk_cache is not None:
-            return self._ratios_bulk_cache
-
-        url = f"{FMP_BASE_URL}/ratios-ttm-bulk"
-        for attempt in range(3):
-            response = self.session.get(url, params={"apikey": self.api_key}, timeout=60)
-            if response.status_code == 429:
-                wait = 60 * (attempt + 1)
-                print(f"[WARN] FMP ratios-ttm-bulk rate-limited (429), retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-            if not response.ok:
-                print(f"[WARN] FMP ratios-ttm-bulk returned {response.status_code}: {response.text[:200]}")
-                self._ratios_bulk_cache = {}
-                return {}
-            break
-        else:
-            print("[WARN] FMP ratios-ttm-bulk failed after 3 attempts — P/E, P/S, Gross Margin and TTM EPS will be empty")
-            self._ratios_bulk_cache = {}
-            return {}
-        try:
-            payload = response.json()
-        except Exception as exc:
-            print(f"[WARN] FMP ratios-ttm-bulk returned invalid JSON: {exc}")
-            self._ratios_bulk_cache = {}
-            return {}
-
-        cache: Dict[str, dict] = {}
-        if isinstance(payload, list):
-            for row in payload:
-                if not isinstance(row, dict):
-                    continue
-                symbol = str(row.get("symbol", "")).strip().upper()
-                if symbol:
-                    cache[symbol] = row
-
-        self._ratios_bulk_cache = cache
-        return cache
 
     def _get_forward_eps(self, symbol: str) -> Optional[float]:
         # Primary: annual analyst estimates — field is epsAvg
@@ -254,45 +212,50 @@ class FMPClient:
         return None
 
     def get_metrics(self, ticker: str) -> Dict[str, Optional[float]]:
-        # Use FMP batch-quote endpoint for current price/market-cap parity with API docs.
         quote = self._get("batch-quote", ticker, symbol_param="symbols") or {}
         rsi = self._get_rsi(ticker)
         market_cap_data = self._get("market-capitalization-batch", ticker, symbol_param="symbols") or {}
-        ratios = self._get_ratios_ttm_bulk().get(ticker.upper(), {})
+        income = self._get("income-statement", ticker) or {}
         growth = self._get("financial-growth", ticker) or {}
         balance = self._get("balance-sheet-statement", ticker) or {}
         book_value_per_share = self._get_book_value_per_share(ticker)
         forward_eps = self._get_forward_eps(ticker)
 
+        current_price = self._to_float(quote.get("price"))
         market_cap = self._to_float(market_cap_data.get("marketCap")) or self._to_float(quote.get("marketCap"))
+
+        # Income statement — source for P/E, P/S, Gross Margin, and EPS fallback
+        revenue = self._to_float(income.get("revenue"))
+        eps_diluted = self._to_float(income.get("epsdiluted")) or self._to_float(income.get("eps"))
+        gross_margin_ratio = self._to_float(income.get("grossProfitRatio"))
+
+        # Calculated ratios
+        pe_ratio = (current_price / eps_diluted) if (current_price and eps_diluted and eps_diluted > 0) else None
+        ps_ratio = (market_cap / revenue) if (market_cap and revenue and revenue > 0) else None
+
         cash_and_cash_equivalents = self._to_float(balance.get("cashAndCashEquivalents"))
         total_debt = self._to_float(balance.get("totalDebt"))
         net_debt = self._to_float(balance.get("netDebt"))
         if net_debt is None and total_debt is not None and cash_and_cash_equivalents is not None:
             net_debt = total_debt - cash_and_cash_equivalents
+
         revenue_growth = self._to_float(growth.get("revenueGrowth"))
         eps_growth = self._to_float(growth.get("epsgrowth"))
         if eps_growth is None:
             eps_growth = self._to_float(growth.get("epsdilutedGrowth"))
-        gross_margin = self._to_float(ratios.get("grossProfitMarginTTM"))
-        if gross_margin is None:
-            # Only call income-statement when ratios-ttm-bulk didn't supply gross margin
-            income = self._get("income-statement", ticker) or {}
-            gross_margin = self._to_float(income.get("grossProfitRatio"))
-        ttm_eps = self._to_float(ratios.get("epsTTM"))
 
         return {
-            "Current Price": quote.get("price"),
+            "Current Price": current_price,
             "RSI": rsi,
-            "P/E Ratio": self._to_float(ratios.get("priceToEarningsRatioTTM")),
-            "P/S Ratio": self._to_float(ratios.get("priceToSalesRatioTTM")) or self._to_float(ratios.get("priceToSalesRatio")),
+            "P/E Ratio": pe_ratio,
+            "P/S Ratio": ps_ratio,
             "Market Cap": market_cap,
             "Forward EPS": forward_eps,
-            "TTM EPS": ttm_eps,
+            "TTM EPS": eps_diluted,
             "Book Value Per Share": book_value_per_share,
             "Revenue Growth %": revenue_growth * 100 if revenue_growth is not None else None,
             "EPS Growth %": eps_growth * 100 if eps_growth is not None else None,
-            "Gross Margin %": gross_margin * 100 if gross_margin is not None else None,
+            "Gross Margin %": gross_margin_ratio * 100 if gross_margin_ratio is not None else None,
             "Net Cash Ratio": (
                 (-net_debt) / market_cap
                 if net_debt is not None and market_cap
@@ -303,7 +266,9 @@ class FMPClient:
             "_total_debt": total_debt,
             "_rev_growth_raw": revenue_growth,
             "_eps_growth_raw": eps_growth,
-            "_gross_margin_raw": gross_margin,
+            "_gross_margin_raw": gross_margin_ratio,
+            "_revenue": revenue,
+            "_eps_diluted": eps_diluted,
         }
 
 
@@ -449,10 +414,9 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
             return None
         return clamp((hi - val) / (hi - lo) * 100, 0.0, 100.0)
 
-    # Growth (35%)
+    # Growth (30%)
     rev_score = norm(record.get("Revenue Growth %"), -50.0, 100.0)       # 20%
     eps_score = norm(record.get("EPS Growth %"), -50.0, 100.0)           # 10%
-    backlog_score = norm(record.get("Backlog Growth %"), -50.0, 100.0)   # 5%
 
     # Financial Quality (25%)
     gm_score = norm(record.get("Gross Margin %"), 0.0, 100.0)            # 15%
@@ -480,7 +444,6 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     weighted = [
         (rev_score, 0.20),
         (eps_score, 0.10),
-        (backlog_score, 0.05),
         (gm_score, 0.15),
         (ncr_score, 0.10),
         (pe_score, 0.05),
@@ -556,7 +519,6 @@ def fetch_records_for_pillar(
             "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
             "EPS Growth %": metrics.get("EPS Growth %"),
-            "Backlog Growth %": None,
             "Gross Margin %": metrics.get("Gross Margin %"),
             "Net Cash Ratio": metrics.get("Net Cash Ratio"),
             # Audit fields — raw API values and intermediates, not written to pillar tabs
@@ -569,6 +531,7 @@ def fetch_records_for_pillar(
             "_audit_graham_number": graham,
             "_audit_cash": metrics.get("_cash"),
             "_audit_total_debt": metrics.get("_total_debt"),
+            "_audit_revenue": metrics.get("_revenue"),
             "_audit_rev_growth_raw": metrics.get("_rev_growth_raw"),
             "_audit_eps_growth_raw": metrics.get("_eps_growth_raw"),
             "_audit_gross_margin_raw": metrics.get("_gross_margin_raw"),
@@ -612,8 +575,8 @@ def write_master_sheet(
 
 AUDIT_COLUMNS = [
     "Pillar", "Ticker", "Current Price",
-    "Forward EPS", "TTM EPS", "EPS Source", "EPS Used", "Pillar P/E Multiple",
-    "Book Value Per Share", "Cash", "Total Debt", "Market Cap",
+    "Forward EPS", "EPS Diluted (Annual)", "EPS Source", "EPS Used", "Pillar P/E Multiple",
+    "Book Value Per Share", "Cash", "Total Debt", "Market Cap", "Revenue",
     "Revenue Growth (raw)", "EPS Growth (raw)", "Gross Margin (raw)",
     "P/E Ratio", "P/S Ratio", "RSI",
     "Buy Zone", "Target Price", "Graham Number", "Graham Undervalued",
@@ -642,7 +605,7 @@ def write_audit_sheet(
                 "Ticker": record.get("Ticker"),
                 "Current Price": record.get("Current Price"),
                 "Forward EPS": record.get("_audit_forward_eps"),
-                "TTM EPS": record.get("_audit_ttm_eps"),
+                "EPS Diluted (Annual)": record.get("_audit_ttm_eps"),
                 "EPS Source": record.get("_audit_eps_source"),
                 "EPS Used": record.get("_audit_eps_used"),
                 "Pillar P/E Multiple": record.get("_audit_pillar_pe"),
@@ -650,6 +613,7 @@ def write_audit_sheet(
                 "Cash": record.get("_audit_cash"),
                 "Total Debt": record.get("_audit_total_debt"),
                 "Market Cap": record.get("Market Cap"),
+                "Revenue": record.get("_audit_revenue"),
                 "Revenue Growth (raw)": record.get("_audit_rev_growth_raw"),
                 "EPS Growth (raw)": record.get("_audit_eps_growth_raw"),
                 "Gross Margin (raw)": record.get("_audit_gross_margin_raw"),
@@ -690,10 +654,22 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
             "Represents a 20% discount to today's price — a target entry level if the stock pulls back.",
         ),
         (
+            "P/E Ratio",
+            "Current Price ÷ EPS Diluted (Annual)",
+            "Divide Current Price by EPS Diluted (Annual) from the Audit tab. Result should match P/E Ratio.",
+            "Both values sourced directly from FMP — Current Price from batch-quote, EPS from income-statement (epsdiluted).",
+        ),
+        (
+            "P/S Ratio",
+            "Market Cap ÷ Revenue",
+            "Divide Market Cap by Revenue from the Audit tab. Result should match P/S Ratio.",
+            "Market Cap from FMP market-capitalization-batch. Revenue from FMP income-statement (most recent annual period).",
+        ),
+        (
             "Target Price",
             "EPS Used × Pillar P/E Multiple",
             "Multiply EPS Used by Pillar P/E Multiple (both in Audit tab). Result should match Target Price.",
-            "EPS Source column shows whether Forward EPS or TTM EPS was used. Pillar P/E multiples are defined in PILLAR_TARGET_PE_MULTIPLES in data_engine.py.",
+            "EPS Source column shows whether Forward EPS or Annual Diluted EPS was used. Pillar P/E multiples are defined in PILLAR_TARGET_PE_MULTIPLES in data_engine.py.",
         ),
         (
             "Graham Number",
@@ -761,9 +737,8 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
     score_start += 1
 
     score_components = [
-        ("Growth (35%)", "Revenue Growth %", "20%", "Higher is better", "-50% to 100%"),
-        ("Growth (35%)", "EPS Growth %", "10%", "Higher is better", "-50% to 100%"),
-        ("Growth (35%)", "Backlog Growth %", "5%", "Higher is better", "-50% to 100%"),
+        ("Growth (30%)", "Revenue Growth %", "20%", "Higher is better", "-50% to 100%"),
+        ("Growth (30%)", "EPS Growth %", "10%", "Higher is better", "-50% to 100%"),
         ("Financial Quality (25%)", "Gross Margin %", "15%", "Higher is better", "0% to 100%"),
         ("Financial Quality (25%)", "Net Cash Ratio", "10%", "Higher is better", "-1.0 to 2.0"),
         ("Valuation (25%)", "P/S Ratio", "10%", "Lower is better", "0 to 30 (capped; above 30 = score 0)"),
