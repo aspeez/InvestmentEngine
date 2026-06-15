@@ -40,9 +40,9 @@ Each workbook contains the following tabs in order:
 | Tab | Description |
 |---|---|
 | **Investment Master** | All tickers across all pillars, sorted by Investment Score descending |
-| **AI [Sub-pillar]** | One tab per pillar with full scored data for that pillar |
 | **Audit** | Raw API values and intermediate calculations for every ticker — use this to verify any computed column |
 | **Formula Guide** | Documents every calculated column: the formula, how to verify it, and the Investment Score weight breakdown |
+| **AI [Sub-pillar]** | One tab per pillar with full scored data for that pillar (follows the first three fixed tabs) |
 
 ### Pillars
 
@@ -73,8 +73,8 @@ Each workbook contains the following tabs in order:
 | Ticker | `Ticker-Master.json` |
 | Current Price | FMP `batch-quote` |
 | RSI | FMP `technical-indicators/rsi` (period 10, 1-day) |
-| P/E Ratio | FMP `ratios-ttm-bulk` |
-| P/S Ratio | FMP `ratios-ttm-bulk` |
+| P/E Ratio | Calculated — `Current Price ÷ EPS Diluted (Annual)` from FMP `income-statement` |
+| P/S Ratio | Calculated — `Market Cap ÷ Revenue` from FMP `income-statement` |
 | Market Cap | FMP `market-capitalization-batch` |
 | Buy Zone | Calculated — `Current Price × 0.80` |
 | Target Price | Calculated — `EPS Used × Pillar P/E Multiple` |
@@ -82,7 +82,6 @@ Each workbook contains the following tabs in order:
 | Upside % | Calculated — `((Target Price − Current Price) / Current Price) × 100` |
 | Revenue Growth % | FMP `financial-growth` |
 | EPS Growth % | FMP `financial-growth` |
-| Gross Margin % | Calculated — `Gross Profit Ratio × 100` from FMP `income-statement` |
 | Net Cash Ratio | Calculated — `(Cash − Total Debt) / Market Cap` |
 | Investment Score | Calculated — weighted 0–100 composite score (see below) |
 
@@ -95,9 +94,9 @@ The Audit tab exposes every raw API value and intermediate input that feeds into
 | Identifiers | Pillar, Ticker |
 | EPS inputs | Forward EPS, EPS Diluted (Annual), EPS Source (Forward / Annual), EPS Used, Pillar P/E Multiple |
 | Valuation inputs | Current Price, Book Value Per Share, Cash, Total Debt, Market Cap, Revenue |
-| Growth inputs (raw decimals) | Revenue Growth (raw), EPS Growth (raw), Gross Margin (raw) |
+| Growth inputs (raw decimals) | Revenue Growth (raw), EPS Growth (raw) |
 | Ratio inputs | P/E Ratio, P/S Ratio, RSI |
-| Computed results | Buy Zone, Target Price, Graham Number, Graham Undervalued, Upside %, Net Cash Ratio, Revenue Growth %, EPS Growth %, Gross Margin %, Investment Score |
+| Computed results | Buy Zone, Target Price, Graham Number, Graham Undervalued, Upside %, Net Cash Ratio, Revenue Growth %, EPS Growth %, Investment Score |
 
 ### Formula Guide tab
 
@@ -113,8 +112,7 @@ A weighted 0–100 ranking designed to identify the most attractive investment o
 |---|---|---|
 | **Growth (30%)** | Revenue Growth % | 20% |
 | | EPS Growth % | 10% |
-| **Financial Quality (25%)** | Gross Margin % | 15% |
-| | Net Cash Ratio | 10% |
+| **Financial Quality (10%)** | Net Cash Ratio | 10% |
 | **Valuation (25%)** | P/S Ratio | 10% |
 | | Upside % | 10% |
 | | P/E Ratio | 5% |
@@ -122,7 +120,7 @@ A weighted 0–100 ranking designed to identify the most attractive investment o
 | | Buy Zone Proximity | 5% |
 
 **Scoring direction:**
-- Higher is better: Revenue Growth, EPS Growth, Backlog Growth, Gross Margin, Net Cash Ratio, Upside %
+- Higher is better: Revenue Growth, EPS Growth, Net Cash Ratio, Upside %
 - Lower is better: P/E Ratio (capped at 60; negative = 0), P/S Ratio (capped at 30)
 - RSI: scored highest at 30 (oversold), linearly to 0 at 80 (overbought)
 - Buy Zone Proximity: scored 100 at or below buy zone, 0 when 25%+ above it
@@ -136,7 +134,7 @@ Target Price = EPS Used × Pillar P/E Multiple
 **EPS source priority:**
 1. Forward EPS — FMP `analyst-estimates` (annual, field `epsAvg`)
 2. Earnings estimate — FMP `earnings` (field `epsEstimated`, future quarters only; only attempted if `analyst-estimates` returned no data at all)
-3. TTM EPS — FMP `ratios-ttm-bulk` (field `epsTTM`)
+3. Annual Diluted EPS — FMP `income-statement` (field `epsdiluted`; final fallback)
 
 The EPS source used is recorded in the `EPS Source` column of the Audit tab (`Forward` or `Annual`). If no EPS is available, `Target Price` is set to `None` and a warning is printed:
 ```
@@ -176,7 +174,7 @@ Configured in `PILLAR_TARGET_PE_MULTIPLES` at the top of `data_engine.py`. Match
 Graham Number = √(22.5 × EPS Used × Book Value Per Share)
 ```
 
-Book Value Per Share is sourced from FMP `ratios` (field `bookValuePerShare`, most recent annual period).
+Book Value Per Share is sourced from FMP `ratios` (field `bookValuePerShareTTM`, most recent period).
 
 `Graham Undervalued` is an informational boolean column only — it does not feed into the Investment Score. It is set to `None` (not `False`) when EPS or Book Value Per Share data is unavailable or non-positive.
 
@@ -190,7 +188,7 @@ The Graham Number intermediate value is visible in the Audit tab for verificatio
 | `technical-indicators/rsi` | RSI |
 | `market-capitalization-batch` | Market Cap |
 | `financial-growth` | Revenue Growth, EPS Growth |
-| `income-statement` | Revenue, EPS Diluted, Gross Profit Ratio (source for P/E, P/S, Gross Margin %) |
+| `income-statement` | Revenue, EPS Diluted (source for P/E and P/S calculations) |
 | `balance-sheet-statement` | Cash, Total Debt (for Net Cash Ratio) |
 | `analyst-estimates` | Forward EPS (annual, `epsAvg`) |
 | `earnings` | Forward EPS fallback (`epsEstimated`; only called when analyst-estimates has no data) |

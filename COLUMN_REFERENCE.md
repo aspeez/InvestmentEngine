@@ -217,26 +217,6 @@ This document covers every column generated in the workbook, including what it m
 
 ---
 
-## Gross Margin %
-
-**What it means:** The percentage of revenue retained after subtracting the cost of goods sold. A measure of pricing power and business efficiency. Calculated from FMP `income-statement` (`grossProfitRatio` × 100).
-
-**Formula:** `Gross Margin % = Gross Profit Ratio × 100`
-
-**Values:** Float percentage (e.g., `68.5` = 68.5%). Can be `None`.
-
-| Range | What it means | Investment signal |
-|---|---|---|
-| > 60% | High-margin software / chip design | **Excellent** |
-| 40–60% | Mixed or hardware-software model | **Good** |
-| 25–40% | Hardware, infrastructure, utilities | Acceptable for the sector |
-| < 25% | Low margin — commoditized or capital-intensive | Requires high volume or growth |
-| Negative | Selling below cost | Significant concern |
-
-**Ideal:** Benchmarks vary heavily by pillar. For AI Software/Platforms and Cybersecurity, expect >60%. For Power Generation, Construction, and Server Systems, 25–45% is typical and healthy. Weight in the Investment Score is 15%.
-
----
-
 ## Net Cash Ratio
 
 **What it means:** Measures the company's net cash position (cash minus total debt) as a fraction of its market cap. A positive ratio means the company has more cash than debt. A negative ratio means the company carries net debt.
@@ -271,13 +251,12 @@ Data sourced from FMP `balance-sheet-statement`.
 |---|---|---|
 | Growth (30%) | Revenue Growth % | 20% |
 | | EPS Growth % | 10% |
-| Financial Quality (25%) | Gross Margin % | 15% |
-| | Net Cash Ratio | 10% |
+| Financial Quality (10%) | Net Cash Ratio | 10% |
 | Valuation (25%) | P/S Ratio | 10% |
 | | Upside % | 10% |
 | | P/E Ratio | 5% |
-| Entry Timing (20%) | RSI | 10% |
-| | Buy Zone Proximity | 10% |
+| Entry Timing (15%) | RSI | 10% |
+| | Buy Zone Proximity | 5% |
 
 | Score Range | Interpretation |
 |---|---|

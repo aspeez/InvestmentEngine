@@ -80,7 +80,6 @@ COLUMNS = [
     "Upside %",
     "Revenue Growth %",
     "EPS Growth %",
-    "Gross Margin %",
     "Net Cash Ratio",
     "Investment Score",
 ]
@@ -224,10 +223,9 @@ class FMPClient:
         current_price = self._to_float(quote.get("price"))
         market_cap = self._to_float(market_cap_data.get("marketCap")) or self._to_float(quote.get("marketCap"))
 
-        # Income statement — source for P/E, P/S, Gross Margin, and EPS fallback
+        # Income statement — source for P/E, P/S, and EPS fallback
         revenue = self._to_float(income.get("revenue"))
         eps_diluted = self._to_float(income.get("epsdiluted")) or self._to_float(income.get("eps"))
-        gross_margin_ratio = self._to_float(income.get("grossProfitRatio"))
 
         # Calculated ratios
         pe_ratio = (current_price / eps_diluted) if (current_price and eps_diluted and eps_diluted > 0) else None
@@ -255,7 +253,6 @@ class FMPClient:
             "Book Value Per Share": book_value_per_share,
             "Revenue Growth %": revenue_growth * 100 if revenue_growth is not None else None,
             "EPS Growth %": eps_growth * 100 if eps_growth is not None else None,
-            "Gross Margin %": gross_margin_ratio * 100 if gross_margin_ratio is not None else None,
             "Net Cash Ratio": (
                 (-net_debt) / market_cap
                 if net_debt is not None and market_cap
@@ -266,7 +263,6 @@ class FMPClient:
             "_total_debt": total_debt,
             "_rev_growth_raw": revenue_growth,
             "_eps_growth_raw": eps_growth,
-            "_gross_margin_raw": gross_margin_ratio,
             "_revenue": revenue,
             "_eps_diluted": eps_diluted,
         }
@@ -418,8 +414,7 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     rev_score = norm(record.get("Revenue Growth %"), -50.0, 100.0)       # 20%
     eps_score = norm(record.get("EPS Growth %"), -50.0, 100.0)           # 10%
 
-    # Financial Quality (25%)
-    gm_score = norm(record.get("Gross Margin %"), 0.0, 100.0)            # 15%
+    # Financial Quality (10%)
     ncr_score = norm(record.get("Net Cash Ratio"), -1.0, 2.0)            # 10%
 
     # Valuation (25%)
@@ -444,7 +439,6 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     weighted = [
         (rev_score, 0.20),
         (eps_score, 0.10),
-        (gm_score, 0.15),
         (ncr_score, 0.10),
         (pe_score, 0.05),
         (ps_score, 0.10),
@@ -519,7 +513,6 @@ def fetch_records_for_pillar(
             "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
             "EPS Growth %": metrics.get("EPS Growth %"),
-            "Gross Margin %": metrics.get("Gross Margin %"),
             "Net Cash Ratio": metrics.get("Net Cash Ratio"),
             # Audit fields — raw API values and intermediates, not written to pillar tabs
             "_audit_forward_eps": forward_eps,
@@ -534,7 +527,6 @@ def fetch_records_for_pillar(
             "_audit_revenue": metrics.get("_revenue"),
             "_audit_rev_growth_raw": metrics.get("_rev_growth_raw"),
             "_audit_eps_growth_raw": metrics.get("_eps_growth_raw"),
-            "_audit_gross_margin_raw": metrics.get("_gross_margin_raw"),
         }
         record["Investment Score"] = compute_investment_score(record)
         records.append(record)
@@ -563,7 +555,7 @@ def write_master_sheet(
     if "Investment Master" in workbook.sheetnames:
         sheet = workbook["Investment Master"]
     else:
-        sheet = workbook.create_sheet(title="Investment Master", index=1)
+        sheet = workbook.create_sheet(title="Investment Master", index=0)
 
     for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
         sheet.cell(row=1, column=col_idx, value=header)
@@ -577,10 +569,10 @@ AUDIT_COLUMNS = [
     "Pillar", "Ticker", "Current Price",
     "Forward EPS", "EPS Diluted (Annual)", "EPS Source", "EPS Used", "Pillar P/E Multiple",
     "Book Value Per Share", "Cash", "Total Debt", "Market Cap", "Revenue",
-    "Revenue Growth (raw)", "EPS Growth (raw)", "Gross Margin (raw)",
+    "Revenue Growth (raw)", "EPS Growth (raw)",
     "P/E Ratio", "P/S Ratio", "RSI",
     "Buy Zone", "Target Price", "Graham Number", "Graham Undervalued",
-    "Upside %", "Net Cash Ratio", "Revenue Growth %", "EPS Growth %", "Gross Margin %",
+    "Upside %", "Net Cash Ratio", "Revenue Growth %", "EPS Growth %",
     "Investment Score",
 ]
 
@@ -616,7 +608,6 @@ def write_audit_sheet(
                 "Revenue": record.get("_audit_revenue"),
                 "Revenue Growth (raw)": record.get("_audit_rev_growth_raw"),
                 "EPS Growth (raw)": record.get("_audit_eps_growth_raw"),
-                "Gross Margin (raw)": record.get("_audit_gross_margin_raw"),
                 "P/E Ratio": record.get("P/E Ratio"),
                 "P/S Ratio": record.get("P/S Ratio"),
                 "RSI": record.get("RSI"),
@@ -628,7 +619,6 @@ def write_audit_sheet(
                 "Net Cash Ratio": record.get("Net Cash Ratio"),
                 "Revenue Growth %": record.get("Revenue Growth %"),
                 "EPS Growth %": record.get("EPS Growth %"),
-                "Gross Margin %": record.get("Gross Margin %"),
                 "Investment Score": record.get("Investment Score"),
             }
             for col_idx, header in enumerate(AUDIT_COLUMNS, start=1):
@@ -708,12 +698,6 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
             "FMP returns growth as a decimal. Multiplying by 100 gives the percentage.",
         ),
         (
-            "Gross Margin %",
-            "Gross Margin (raw) × 100",
-            "Take Gross Margin (raw) from Audit tab and multiply by 100.",
-            "Sourced from FMP ratios-ttm-bulk field grossProfitMarginTTM. Multiplying by 100 gives the percentage.",
-        ),
-        (
             "Investment Score",
             "Weighted composite of 10 metrics, each normalized 0–100, then combined by weight.",
             "See the component weight table below. Each metric can be traced back to the Audit tab.",
@@ -739,8 +723,7 @@ def write_formula_guide_sheet(workbook: Workbook) -> None:
     score_components = [
         ("Growth (30%)", "Revenue Growth %", "20%", "Higher is better", "-50% to 100%"),
         ("Growth (30%)", "EPS Growth %", "10%", "Higher is better", "-50% to 100%"),
-        ("Financial Quality (25%)", "Gross Margin %", "15%", "Higher is better", "0% to 100%"),
-        ("Financial Quality (25%)", "Net Cash Ratio", "10%", "Higher is better", "-1.0 to 2.0"),
+        ("Financial Quality (10%)", "Net Cash Ratio", "10%", "Higher is better", "-1.0 to 2.0"),
         ("Valuation (25%)", "P/S Ratio", "10%", "Lower is better", "0 to 30 (capped; above 30 = score 0)"),
         ("Valuation (25%)", "Upside %", "10%", "Higher is better", "-30% to 100%"),
         ("Valuation (25%)", "P/E Ratio", "5%", "Lower is better", "0 to 60 (capped; above 60 or negative = score 0)"),
@@ -859,14 +842,16 @@ def run(api_key: Optional[str]) -> Dict[str, object]:
         records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]] = []
 
         for context in sector_contexts:
-            sheet_name = sheet_name_for_pillar(context.pillar)
             records = fetch_records_for_pillar(context, client)
-            write_records_to_sheet(workbook, sheet_name, records)
             records_by_context.append((context, records))
 
         write_master_sheet(workbook, records_by_context)
         write_audit_sheet(workbook, records_by_context)
         write_formula_guide_sheet(workbook)
+
+        for context, records in records_by_context:
+            sheet_name = sheet_name_for_pillar(context.pillar)
+            write_records_to_sheet(workbook, sheet_name, records)
 
         daily_workbook_path = sector_stock_data_dir(sector) / f"{DAILY_WORKBOOK_PREFIX}_{date_stamp}.xlsx"
         workbook.save(daily_workbook_path)
