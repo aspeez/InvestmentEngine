@@ -152,6 +152,9 @@ InvestmentEngine/
 ├── .github/
 │   └── workflows/
 │       └── data_engine.yml
+├── doc/
+│   └── images/
+│       └── scorecard.png
 ├── requirements.txt
 ├── pyproject.toml                         ← Python packaging metadata
 ├── QUICKSTART.md                          ← Step-by-step setup guide
@@ -224,7 +227,7 @@ See [COLUMN_REFERENCE.md](COLUMN_REFERENCE.md) for per-metric details.
 
 ## 📊 Watchlists
 
-![Investment Scorecard](https://github.com/aspeez/InvestmentEngine/assets/IMAGE.png)
+![Investment Scorecard](doc/images/scorecard.png)
 
 Every ticker is classified into one of four Robinhood watchlists (first match wins, no duplicates):
 
