@@ -224,7 +224,7 @@ See [COLUMN_REFERENCE.md](COLUMN_REFERENCE.md) for per-metric details.
 
 ## 📊 Watchlists
 
-![Investment Scorecard](https://github.com/aspeez/InvestmentEngine/assets/IMAGE.png)
+![Investment Scorecard](https://github.com/aspeez/InvestmentEngine/tree/main/investment-engine/doc/images/score.png)
 
 Every ticker is classified into one of four Robinhood watchlists (first match wins, no duplicates):
 
