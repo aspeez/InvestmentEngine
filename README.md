@@ -224,15 +224,15 @@ See [COLUMN_REFERENCE.md](COLUMN_REFERENCE.md) for per-metric details.
 
 ## 📊 Watchlists
 
-![Investment Scorecard](https://github.com/aspeez/InvestmentEngine/tree/main/investment-engine/doc/images/score.png)
+![Investment Scorecard](https://github.com/aspeez/InvestmentEngine/raw/main/investment-engine/doc/images/score.png)
 
 Every ticker is classified into one of four Robinhood watchlists (first match wins, no duplicates):
 
 | Watchlist | Key Thresholds | Interpretation |
 |---|---|---|
-| **WL1 — High Conviction 🟢** | Score ≥70, Rev Growth ≥20%, EPS Growth ≥20%, Net Margin ≥10%, D/E ≤1.0, RSI 30–55, Upside ≥20%, Analyst ≤2.0 | Top-tier buys — strong fundamentals and entry |
+| **WL1 — High Conviction 🟢** | Score ≥70, Rev Growth ≥20%, EPS Growth ≥20%, Net Margin ≥10%, D/E ≤1.0, RSI 30–55, Upside ≥20%, Analyst ≤2.0 | Top-tier buys — strong fundamental[...]
 | **WL2 — Pullback Watch 🔵** | Score ≥60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, RSI 30–50, Upside ≥20%, Analyst ≤2.5 | Wait for pullback to build position |
-| **WL3 — Deep Value 🟡** | Score ≥50, Rev Growth ≥10%, EPS Growth ≥0%, Net Margin >0%, D/E ≤1.0, RSI ≤35, Upside ≥15%, Analyst ≤2.5 | Undervalued, oversold — entry for long-term holders |
+| **WL3 — Deep Value 🟡** | Score ≥50, Rev Growth ≥10%, EPS Growth ≥0%, Net Margin >0%, D/E ≤1.0, RSI ≤35, Upside ≥15%, Analyst ≤2.5 | Undervalued, oversold — entry for long-term h[...]
 | **WL4 — Pipeline ⚪** | Score 50–60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, Upside ≥15%, Analyst ≤2.5 | Watch for score acceleration into WL1–WL3 |
 
 Note: Gross Margin % is intentionally excluded from watchlist thresholds to avoid penalizing hardware/infrastructure plays.
