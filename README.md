@@ -125,8 +125,8 @@ Claude will:
 2. Check existing Robinhood watchlists for duplicates
 3. Add qualifying tickers to WL1–WL4 via Robinhood MCP connector
 4. Send completion summary with tickers added per watchlist
-5. Research additional High Conviction candidates
-6. Commit research results to `research_MMDDYYYY.json`
+5. Research additional High Conviction candidates not in the current ticker universe
+6. Deliver research results as a downloadable `research_MMDDYYYY.txt` file
 
 Close the GitHub Issue when done.
 
@@ -148,8 +148,7 @@ InvestmentEngine/
 │           │   ├── investment_data_MMDDYYYY.xlsx
 │           │   └── consolidated_MMDDYYYY.csv
 │           └── ticker-review/
-│               ├── watchlist_MMDDYYYY.json
-│               └── research_MMDDYYYY.json
+│               └── watchlist_MMDDYYYY.json  ← watchlist classification (WL1–WL4)
 ├── .github/
 │   └── workflows/
 │       └── data_engine.yml

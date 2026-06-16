@@ -75,8 +75,8 @@ Claude will:
 2. Check existing Robinhood watchlists for duplicates
 3. Add qualifying tickers to WL1–WL4 via the Robinhood MCP connector
 4. Send a completion summary of what was added to each list
-5. Research additional High Conviction candidates
-6. Commit research results to `sector/<SECTOR>/ticker-review/research_MMDDYYYY.json`
+5. Research additional High Conviction candidates not currently in the ticker universe
+6. Deliver research results as a downloadable `research_MMDDYYYY.txt` file
 
 ## 8. Set up GitHub Actions automation
 

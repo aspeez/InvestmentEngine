@@ -74,6 +74,6 @@ jobs:
              - Add qualifying tickers to WL1–WL4 via Robinhood MCP
              - Send a completion summary
              - Research additional High Conviction candidates
-             - Commit research results to \`ticker-review/\`
+             - Deliver research results as a downloadable file
 
           Close this issue once Phase 2 is complete."
