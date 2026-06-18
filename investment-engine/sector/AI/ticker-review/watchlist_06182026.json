@@ -4,7 +4,7 @@
       {
         "ticker": "NVDA",
         "pillar": "AI Compute Chips",
-        "investment_score": 74.1,
+        "investment_score": 73.4,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
@@ -14,7 +14,7 @@
       {
         "ticker": "MSFT",
         "pillar": "AI Cloud",
-        "investment_score": 65.2,
+        "investment_score": 65.3,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
@@ -22,15 +22,7 @@
       {
         "ticker": "AMZN",
         "pillar": "AI Cloud",
-        "investment_score": 61.5,
-        "tab": "Investment Master",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
-      },
-      {
-        "ticker": "AVGO",
-        "pillar": "AI Compute Chips",
-        "investment_score": 60.2,
+        "investment_score": 61.3,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
@@ -41,15 +33,7 @@
       {
         "ticker": "CEG",
         "pillar": "AI Power Generation",
-        "investment_score": 58.6,
-        "tab": "Investment Master",
-        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
-        "label": "WL4 \u2014 Pipeline \u26aa"
-      },
-      {
-        "ticker": "ANET",
-        "pillar": "AI Networking",
-        "investment_score": 53.9,
+        "investment_score": 58.1,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
@@ -57,7 +41,7 @@
       {
         "ticker": "LITE",
         "pillar": "AI Networking",
-        "investment_score": 58.1,
+        "investment_score": 57.5,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
@@ -65,7 +49,7 @@
       {
         "ticker": "DLR",
         "pillar": "AI Land",
-        "investment_score": 51.3,
+        "investment_score": 50.5,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
@@ -73,15 +57,7 @@
       {
         "ticker": "VRT",
         "pillar": "AI Heating and Cooling",
-        "investment_score": 53.7,
-        "tab": "Investment Master",
-        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
-        "label": "WL4 \u2014 Pipeline \u26aa"
-      },
-      {
-        "ticker": "GEV",
-        "pillar": "AI Grid and Power Transmission",
-        "investment_score": 54.7,
+        "investment_score": 52.5,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
@@ -89,7 +65,7 @@
       {
         "ticker": "EME",
         "pillar": "AI Construction",
-        "investment_score": 52.3,
+        "investment_score": 51.8,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
@@ -101,14 +77,22 @@
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
+      },
+      {
+        "ticker": "AVGO",
+        "pillar": "AI Compute Chips",
+        "investment_score": 59.1,
+        "tab": "Investment Master",
+        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
+        "label": "WL4 \u2014 Pipeline \u26aa"
       }
     ]
   },
   "counts": {
     "High Conviction": 1,
-    "Pullback Watch": 3,
+    "Pullback Watch": 2,
     "Deep Value": 0,
-    "Pipeline": 8
+    "Pipeline": 7
   },
-  "unqualified_count": 63
+  "unqualified_count": 65
 }
