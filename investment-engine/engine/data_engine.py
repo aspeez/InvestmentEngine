@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import requests
-from openpyxl import Workbook
 
 FINVIZ_BASE_URL = "https://elite.finviz.com/export"
 # Column codes for the Finviz export endpoint (v=151)
@@ -24,32 +23,10 @@ FINVIZ_BASE_URL = "https://elite.finviz.com/export"
 FINVIZ_COLUMNS = "1,65,59,7,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SECTOR_DIR = REPO_ROOT / "sector"
+STOCK_DATA_DIR = REPO_ROOT / "stock-data"
+TICKER_REVIEW_DIR = REPO_ROOT / "ticker-review"
 MASTER_JSON_PATH = REPO_ROOT / "Ticker-Master.json"
-DAILY_WORKBOOK_PREFIX = "investment_data"
 DATE_FORMAT = "%m%d%Y"
-
-KNOWN_SHEET_NAMES = {
-    "AI Power Generation": "AI Power Gen",
-    "AI Networking": "AI Networking",
-    "AI Memory and Storage": "AI Memory Storage",
-    "AI Land": "AI Land",
-    "AI Heating and Cooling": "AI Heat Cooling",
-    "AI Grid and Power Transmission": "AI Grid Transmission",
-    "AI Electrical Infrastructure": "AI Electrical Infra",
-    "AI Construction": "AI Construction",
-    "AI Cybersecurity": "AI Cybersecurity",
-    "AI Semiconductor Chip Manufacturing": "AI Semi Mfg",
-    "AI Server and Rack Systems": "AI Server Rack",
-    "AI Software and Platforms": "AI Software Platform",
-    "AI Backup Power": "AI Backup Power",
-    "AI Cloud": "AI Cloud",
-    "AI Fire Detection": "AI Fire Detection",
-    "AI Water": "AI Water",
-    "AI Insurance and Risk": "AI Insurance Risk",
-    "AI Security": "AI Security",
-    "AI Compute Chips": "AI Compute Chips",
-}
 
 COLUMNS = [
     "Ticker",
@@ -58,7 +35,6 @@ COLUMNS = [
     "P/E Ratio",
     "P/S Ratio",
     "Market Cap",
-    "Buy Zone",
     "Target Price",
     "Graham Undervalued",
     "Upside %",
@@ -77,7 +53,6 @@ COLUMNS = [
 
 @dataclass(frozen=True)
 class TickerContext:
-    sector: str
     pillar: str
     tickers: List[str]
 
@@ -173,29 +148,8 @@ class FinvizClient:
 
 
 def ensure_directories() -> None:
-    SECTOR_DIR.mkdir(exist_ok=True)
-
-
-def sector_root(sector: str) -> Path:
-    return SECTOR_DIR / sector
-
-
-def sector_stock_data_dir(sector: str) -> Path:
-    return sector_root(sector) / "stock-data"
-
-
-def sector_ticker_review_dir(sector: str) -> Path:
-    return sector_root(sector) / "ticker-review"
-
-
-def sector_pillar_tickers_path(sector: str) -> Path:
-    return sector_root(sector) / "pillar_tickers.json"
-
-
-def ensure_sector_directories(sectors: Iterable[str]) -> None:
-    for sector in sectors:
-        sector_stock_data_dir(sector).mkdir(parents=True, exist_ok=True)
-        sector_ticker_review_dir(sector).mkdir(parents=True, exist_ok=True)
+    STOCK_DATA_DIR.mkdir(exist_ok=True)
+    TICKER_REVIEW_DIR.mkdir(exist_ok=True)
 
 
 def normalize_ticker(value: object) -> str:
@@ -221,72 +175,27 @@ def load_json_file(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def load_master_config() -> Dict[str, Dict[str, List[str]]]:
+def load_master_config() -> Dict[str, List[str]]:
     payload = load_json_file(MASTER_JSON_PATH)
-    if payload:
-        return {
-            sector: {
-                pillar: unique(tickers)
-                for pillar, tickers in sector_payload.items()
-                if isinstance(tickers, list)
-            }
-            for sector, sector_payload in payload.items()
-            if isinstance(sector_payload, dict)
-        }
-
-    fallback: Dict[str, Dict[str, List[str]]] = {}
-    if SECTOR_DIR.exists():
-        for child in SECTOR_DIR.iterdir():
-            if not child.is_dir():
-                continue
-            sector_payload = load_json_file(child / "pillar_tickers.json")
-            if sector_payload:
-                fallback[child.name] = {
-                    pillar: unique(tickers)
-                    for pillar, tickers in sector_payload.items()
-                    if isinstance(tickers, list)
-                }
-    if fallback:
-        return fallback
-
-    return {}
+    return {
+        pillar: unique(tickers)
+        for pillar, tickers in payload.items()
+        if isinstance(tickers, list)
+    }
 
 
-def sync_master_files(master_config: Dict[str, Dict[str, List[str]]]) -> None:
+def sync_master_file(master_config: Dict[str, List[str]]) -> None:
     with MASTER_JSON_PATH.open("w", encoding="utf-8") as handle:
         json.dump(master_config, handle, indent=2)
         handle.write("\n")
 
-    ensure_sector_directories(master_config.keys())
-    for sector, sector_config in master_config.items():
-        with sector_pillar_tickers_path(sector).open("w", encoding="utf-8") as handle:
-            json.dump(sector_config, handle, indent=2)
-            handle.write("\n")
 
+def all_pillar_contexts(master_config: Dict[str, List[str]]) -> List[TickerContext]:
+    return [
+        TickerContext(pillar=pillar, tickers=tickers)
+        for pillar, tickers in master_config.items()
+    ]
 
-def all_pillar_contexts(master_config: Dict[str, Dict[str, List[str]]]) -> List[TickerContext]:
-    contexts: List[TickerContext] = []
-    for sector, sector_payload in master_config.items():
-        for pillar, tickers in sector_payload.items():
-            contexts.append(TickerContext(sector=sector, pillar=pillar, tickers=unique(tickers)))
-    return contexts
-
-
-def sheet_name_for_pillar(pillar: str) -> str:
-    if pillar in KNOWN_SHEET_NAMES:
-        return KNOWN_SHEET_NAMES[pillar]
-
-    cleaned = "".join(char for char in pillar if char.isalnum() or char in [" ", "&", "-"])
-    cleaned = cleaned.replace("&", "And").replace("-", " ")
-    parts = [part for part in cleaned.split() if part]
-    if not parts:
-        return pillar[:31]
-
-    abbreviated = []
-    for part in parts:
-        abbreviated.append(part[:4].title() if len(part) > 4 else part.title())
-
-    return " ".join(abbreviated)[:31]
 
 
 def _graham_number(eps: Optional[float], bvps: Optional[float]) -> Optional[float]:
@@ -324,33 +233,24 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     ps_score = norm_inv(record.get("P/S Ratio"), 0.0, 30.0)              # 10%
     upside_score = norm(record.get("Upside %"), -30.0, 100.0)            # 10%
 
-    # Entry Timing (20%)
+    # Entry Timing (15%)
     rsi = record.get("RSI")
     # Score highest at RSI=30 (oversold), linearly to 0 at RSI=80 (overbought)
     rsi_score: Optional[float] = clamp((80.0 - rsi) / 50.0 * 100.0, 0.0, 100.0) if rsi is not None else None  # 10%
-    current_price = record.get("Current Price")
-    buy_zone = record.get("Buy Zone")
-    if current_price is not None and buy_zone is not None and buy_zone > 0:
-        # Score 100 at or below buy zone, 0 when 25%+ above it
-        ratio = current_price / buy_zone
-        bz_score: Optional[float] = clamp((1.25 - ratio) / 0.25 * 100.0, 0.0, 100.0)
-    else:
-        bz_score = None
     # Analyst Recom: 1.0=Strong Buy (best), 5.0=Strong Sell (worst)
     recom = record.get("Analyst Recom")
     recom_score: Optional[float] = clamp((5.0 - recom) / 4.0 * 100.0, 0.0, 100.0) if recom is not None else None  # 5%
 
     weighted = [
-        (rev_score, 0.20),
+        (rev_score, 0.20),   # Growth 30%
         (eps_score, 0.10),
-        (gm_score, 0.10),
+        (gm_score, 0.10),    # Financial Quality 25%
         (npm_score, 0.10),
         (de_score, 0.05),
-        (pe_score, 0.05),
+        (pe_score, 0.05),    # Valuation 30%
         (ps_score, 0.10),
-        (upside_score, 0.10),
-        (rsi_score, 0.10),
-        (bz_score, 0.05),
+        (upside_score, 0.15),
+        (rsi_score, 0.10),   # Entry Timing 15%
         (recom_score, 0.05),
     ]
 
@@ -396,7 +296,6 @@ def fetch_records_for_pillar(
             "P/E Ratio": metrics.get("P/E Ratio"),
             "P/S Ratio": metrics.get("P/S Ratio"),
             "Market Cap": metrics.get("Market Cap"),
-            "Buy Zone": current_price * 0.8 if current_price is not None else None,
             "Target Price": target_price,
             "Graham Undervalued": graham_undervalued,
             "Upside %": upside_pct,
@@ -428,7 +327,7 @@ def _cell_value(value: object) -> object:
 
 # Columns checked when deciding if a ticker is speculative (all data columns except Ticker)
 _NULL_CHECK_COLUMNS = [c for c in COLUMNS if c != "Ticker"]
-_SPECULATIVE_NULL_THRESHOLD = 2  # more than this many nulls → Speculative
+_SPECULATIVE_NULL_THRESHOLD = 3  # more than this many nulls → Speculative
 
 
 def _null_count(record: Dict) -> int:
@@ -438,7 +337,7 @@ def _null_count(record: Dict) -> int:
 def _split_records(
     records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
 ) -> Tuple[List[Dict], List[Dict]]:
-    """Return (core_rows, speculative_rows) with Pillar injected into each row."""
+    """Return (core_rows, speculative_rows) with Pillar and Tab injected into each row."""
     core: List[Dict] = []
     speculative: List[Dict] = []
     for context, records in records_by_context:
@@ -446,48 +345,13 @@ def _split_records(
             row = dict(record)
             row["Pillar"] = context.pillar
             if _null_count(row) > _SPECULATIVE_NULL_THRESHOLD:
+                row["Tab"] = "Speculative Investments"
                 speculative.append(row)
             else:
+                row["Tab"] = "Investment Master"
                 core.append(row)
     return core, speculative
 
-
-def _write_rows_to_sheet(sheet, rows: List[Dict]) -> None:
-    for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
-        sheet.cell(row=1, column=col_idx, value=header)
-    for row_idx, row in enumerate(rows, start=2):
-        for col_idx, header in enumerate(MASTER_COLUMNS, start=1):
-            sheet.cell(row=row_idx, column=col_idx, value=_cell_value(row.get(header)))
-
-
-def write_master_sheet(
-    workbook: Workbook,
-    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
-) -> None:
-    core, speculative = _split_records(records_by_context)
-
-    core.sort(key=lambda r: (r.get("Investment Score") is None, -(r.get("Investment Score") or 0)))
-
-    sheet = workbook.create_sheet(title="Investment Master", index=0)
-    _write_rows_to_sheet(sheet, core)
-
-    spec_sheet = workbook.create_sheet(title="Speculative Investments")
-    speculative.sort(key=lambda r: (r.get("Investment Score") is None, -(r.get("Investment Score") or 0)))
-    _write_rows_to_sheet(spec_sheet, speculative)
-
-
-def write_records_to_sheet(workbook: Workbook, sheet_name: str, records: List[Dict[str, Optional[float]]]) -> None:
-    if sheet_name in workbook.sheetnames:
-        sheet = workbook[sheet_name]
-    else:
-        sheet = workbook.create_sheet(title=sheet_name)
-
-    for column_index, header in enumerate(COLUMNS, start=1):
-        sheet.cell(row=1, column=column_index, value=header)
-
-    for row_index, record in enumerate(records, start=2):
-        for column_index, header in enumerate(COLUMNS, start=1):
-            sheet.cell(row=row_index, column=column_index, value=_cell_value(record.get(header)))
 
 
 # ── Robinhood watchlist IDs (created in Claude.ai Investment Engine session) ──
@@ -607,7 +471,7 @@ def classify_watchlists(core: List[Dict], speculative: List[Dict]) -> Dict[str, 
                     "ticker": row.get("Ticker"),
                     "pillar": row.get("Pillar"),
                     "investment_score": _cell_value(row.get("Investment Score")),
-                    "tab": "Investment Master" if row in core else "Speculative Investments",
+                    "tab": row.get("Tab"),
                     "list_id": wl["list_id"],
                     "label": wl["label"],
                 })
@@ -627,8 +491,8 @@ def classify_watchlists(core: List[Dict], speculative: List[Dict]) -> Dict[str, 
     }
 
 
-def _save_watchlist_classification(classification: Dict, sector: str, date_stamp: str) -> Path:
-    path = sector_ticker_review_dir(sector) / f"{WATCHLIST_FILENAME}_{date_stamp}.json"
+def _save_watchlist_classification(classification: Dict, date_stamp: str) -> Path:
+    path = TICKER_REVIEW_DIR / f"{WATCHLIST_FILENAME}_{date_stamp}.json"
     with path.open("w", encoding="utf-8") as fh:
         json.dump(classification, fh, indent=2)
         fh.write("\n")
@@ -637,19 +501,16 @@ def _save_watchlist_classification(classification: Dict, sector: str, date_stamp
 
 
 def _build_consolidated_csv(core: List[Dict], speculative: List[Dict]) -> str:
-    """Serialize Investment Master and Speculative rows into a single CSV string."""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=["Tab"] + MASTER_COLUMNS, extrasaction="ignore")
     writer.writeheader()
-    for row in core:
-        writer.writerow({"Tab": "Investment Master", **{col: _cell_value(row.get(col)) for col in MASTER_COLUMNS}})
-    for row in speculative:
-        writer.writerow({"Tab": "Speculative Investments", **{col: _cell_value(row.get(col)) for col in MASTER_COLUMNS}})
+    for row in core + speculative:
+        writer.writerow({col: _cell_value(row.get(col)) for col in ["Tab"] + MASTER_COLUMNS})
     return buf.getvalue()
 
 
-def _save_consolidated_csv(csv_content: str, sector: str, date_stamp: str) -> Path:
-    path = sector_stock_data_dir(sector) / f"{CONSOLIDATED_CSV_FILENAME}_{date_stamp}.csv"
+def _save_consolidated_csv(csv_content: str, date_stamp: str) -> Path:
+    path = STOCK_DATA_DIR / f"{CONSOLIDATED_CSV_FILENAME}_{date_stamp}.csv"
     path.write_text(csv_content, encoding="utf-8")
     print(f"[INFO] Consolidated CSV saved: {path}")
     return path
@@ -658,8 +519,6 @@ def _save_consolidated_csv(csv_content: str, sector: str, date_stamp: str) -> Pa
 def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
     master_config = load_master_config()
-    sync_master_files(master_config)
-    ensure_sector_directories(master_config.keys())
 
     date_stamp = datetime.now().strftime(DATE_FORMAT)
 
@@ -669,62 +528,29 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     metrics_cache: Dict[str, Dict[str, Optional[float]]] = {}
     if auth_token:
         client = FinvizClient(auth_token)
-        all_tickers: List[str] = []
-        seen: set = set()
-        for ctx in all_contexts:
-            for t in ctx.tickers:
-                if t not in seen:
-                    all_tickers.append(t)
-                    seen.add(t)
+        all_tickers: List[str] = unique(t for ctx in all_contexts for t in ctx.tickers)
         print(f"[INFO] Fetching Finviz data for {len(all_tickers)} tickers...")
         metrics_cache = client.get_all_metrics(all_tickers)
         print(f"[INFO] Received data for {len(metrics_cache)} tickers")
 
-    contexts_by_sector: Dict[str, List[TickerContext]] = {}
-    for context in all_contexts:
-        contexts_by_sector.setdefault(context.sector, []).append(context)
+    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]] = [
+        (ctx, fetch_records_for_pillar(ctx, metrics_cache)) for ctx in all_contexts
+    ]
 
-    outputs: Dict[str, object] = {"date": date_stamp, "sectors": {}}
+    core, speculative = _split_records(records_by_context)
 
-    for sector, sector_contexts in contexts_by_sector.items():
-        workbook = Workbook()
-        workbook.remove(workbook.active)
+    csv_content = _build_consolidated_csv(core, speculative)
+    csv_path = _save_consolidated_csv(csv_content, date_stamp)
 
-        records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]] = []
+    classification = classify_watchlists(core, speculative)
+    watchlist_path = _save_watchlist_classification(classification, date_stamp)
 
-        for context in sector_contexts:
-            records = fetch_records_for_pillar(context, metrics_cache)
-            records_by_context.append((context, records))
-
-        write_master_sheet(workbook, records_by_context)
-
-        for context, records in records_by_context:
-            sheet_name = sheet_name_for_pillar(context.pillar)
-            write_records_to_sheet(workbook, sheet_name, records)
-
-        daily_workbook_path = sector_stock_data_dir(sector) / f"{DAILY_WORKBOOK_PREFIX}_{date_stamp}.xlsx"
-        workbook.save(daily_workbook_path)
-        workbook.close()
-
-        sector_output: Dict[str, object] = {"daily_workbook": str(daily_workbook_path)}
-
-        # Export consolidated CSV and run watchlist classification.
-        # Both files are committed to the repo so Claude Code can pick them up
-        # in the interactive review session (Steps 4-8).
-        core, speculative = _split_records(records_by_context)
-
-        csv_content = _build_consolidated_csv(core, speculative)
-        csv_path = _save_consolidated_csv(csv_content, sector, date_stamp)
-        sector_output["consolidated_csv"] = str(csv_path)
-
-        classification = classify_watchlists(core, speculative)
-        watchlist_path = _save_watchlist_classification(classification, sector, date_stamp)
-        sector_output["watchlist_classification"] = str(watchlist_path)
-        sector_output["watchlist_counts"] = classification["counts"]
-
-        outputs["sectors"][sector] = sector_output
-
-    return outputs
+    return {
+        "date": date_stamp,
+        "consolidated_csv": str(csv_path),
+        "watchlist_classification": str(watchlist_path),
+        "watchlist_counts": classification["counts"],
+    }
 
 
 def parse_args() -> argparse.Namespace:
