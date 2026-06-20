@@ -7,7 +7,7 @@ import json
 import math
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -520,7 +520,8 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
     master_config = load_master_config()
 
-    date_stamp = datetime.now().strftime(DATE_FORMAT)
+    EST = timezone(timedelta(hours=-5))
+    date_stamp = datetime.now(tz=EST).strftime(DATE_FORMAT)
 
     all_contexts = all_pillar_contexts(master_config)
 
