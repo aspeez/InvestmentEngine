@@ -3,7 +3,6 @@
     "High Conviction": [
       {
         "ticker": "NVDA",
-        "pillar": "AI Compute Chips",
         "investment_score": 75.5,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
@@ -13,7 +12,6 @@
     "Pullback Watch": [
       {
         "ticker": "LITE",
-        "pillar": "AI Networking",
         "investment_score": 61.3,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
@@ -21,7 +19,6 @@
       },
       {
         "ticker": "MSFT",
-        "pillar": "AI Cloud",
         "investment_score": 68.0,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
@@ -29,7 +26,6 @@
       },
       {
         "ticker": "AMZN",
-        "pillar": "AI Cloud",
         "investment_score": 62.0,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
@@ -40,7 +36,6 @@
     "Pipeline": [
       {
         "ticker": "CEG",
-        "pillar": "AI Power Generation",
         "investment_score": 59.7,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
@@ -48,7 +43,6 @@
       },
       {
         "ticker": "DLR",
-        "pillar": "AI Land",
         "investment_score": 52.7,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
@@ -56,7 +50,6 @@
       },
       {
         "ticker": "EME",
-        "pillar": "AI Construction",
         "investment_score": 53.6,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
@@ -64,7 +57,6 @@
       },
       {
         "ticker": "AJG",
-        "pillar": "AI Insurance and Risk",
         "investment_score": 59.8,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
@@ -78,5 +70,5 @@
     "Deep Value": 0,
     "Pipeline": 4
   },
-  "unqualified_count": 67
+  "unqualified_count": 69
 }
