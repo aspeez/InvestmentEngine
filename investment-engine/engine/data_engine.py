@@ -6,7 +6,6 @@ import io
 import json
 import math
 import os
-from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -50,11 +49,6 @@ COLUMNS = [
     "Investment Score",
 ]
 
-
-@dataclass(frozen=True)
-class TickerContext:
-    pillar: str
-    tickers: List[str]
 
 
 class FinvizClient:
@@ -167,34 +161,12 @@ def unique(values: Iterable[str]) -> List[str]:
     return ordered
 
 
-def load_json_file(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    with path.open("r", encoding="utf-8") as handle:
+def load_master_config() -> List[str]:
+    if not MASTER_JSON_PATH.exists():
+        return []
+    with MASTER_JSON_PATH.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
-    return data if isinstance(data, dict) else {}
-
-
-def load_master_config() -> Dict[str, List[str]]:
-    payload = load_json_file(MASTER_JSON_PATH)
-    return {
-        pillar: unique(tickers)
-        for pillar, tickers in payload.items()
-        if isinstance(tickers, list)
-    }
-
-
-def sync_master_file(master_config: Dict[str, List[str]]) -> None:
-    with MASTER_JSON_PATH.open("w", encoding="utf-8") as handle:
-        json.dump(master_config, handle, indent=2)
-        handle.write("\n")
-
-
-def all_pillar_contexts(master_config: Dict[str, List[str]]) -> List[TickerContext]:
-    return [
-        TickerContext(pillar=pillar, tickers=tickers)
-        for pillar, tickers in master_config.items()
-    ]
+    return unique(t for t in data if isinstance(t, str))
 
 
 
@@ -261,12 +233,12 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     return round(weighted_sum / total_weight, 1)
 
 
-def fetch_records_for_pillar(
-    context: TickerContext,
+def fetch_records(
+    tickers: List[str],
     metrics_cache: Dict[str, Dict[str, Optional[float]]],
 ) -> List[Dict[str, Optional[float]]]:
     records: List[Dict[str, Optional[float]]] = []
-    for ticker in context.tickers:
+    for ticker in tickers:
         metrics: Dict[str, Optional[float]] = metrics_cache.get(ticker, {})
 
         current_price = metrics.get("Current Price")
@@ -315,7 +287,7 @@ def fetch_records_for_pillar(
     return records
 
 
-MASTER_COLUMNS = ["Pillar"] + COLUMNS
+MASTER_COLUMNS = COLUMNS
 
 
 def _cell_value(value: object) -> object:
@@ -334,22 +306,18 @@ def _null_count(record: Dict) -> int:
     return sum(1 for col in _NULL_CHECK_COLUMNS if record.get(col) is None)
 
 
-def _split_records(
-    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]],
-) -> Tuple[List[Dict], List[Dict]]:
-    """Return (core_rows, speculative_rows) with Pillar and Tab injected into each row."""
+def _split_records(records: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    """Return (core_rows, speculative_rows) with Tab injected into each row."""
     core: List[Dict] = []
     speculative: List[Dict] = []
-    for context, records in records_by_context:
-        for record in records:
-            row = dict(record)
-            row["Pillar"] = context.pillar
-            if _null_count(row) > _SPECULATIVE_NULL_THRESHOLD:
-                row["Tab"] = "Speculative Investments"
-                speculative.append(row)
-            else:
-                row["Tab"] = "Investment Master"
-                core.append(row)
+    for record in records:
+        row = dict(record)
+        if _null_count(row) > _SPECULATIVE_NULL_THRESHOLD:
+            row["Tab"] = "Speculative Investments"
+            speculative.append(row)
+        else:
+            row["Tab"] = "Investment Master"
+            core.append(row)
     return core, speculative
 
 
@@ -469,7 +437,6 @@ def classify_watchlists(core: List[Dict], speculative: List[Dict]) -> Dict[str, 
             if qualifies:
                 placement[wl["name"]].append({
                     "ticker": row.get("Ticker"),
-                    "pillar": row.get("Pillar"),
                     "investment_score": _cell_value(row.get("Investment Score")),
                     "tab": row.get("Tab"),
                     "list_id": wl["list_id"],
@@ -518,27 +485,20 @@ def _save_consolidated_csv(csv_content: str, date_stamp: str) -> Path:
 
 def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
-    master_config = load_master_config()
+    tickers = load_master_config()
 
     EST = timezone(timedelta(hours=-5))
     date_stamp = datetime.now(tz=EST).strftime(DATE_FORMAT)
 
-    all_contexts = all_pillar_contexts(master_config)
-
-    # Single bulk Finviz call for all tickers across all pillars
     metrics_cache: Dict[str, Dict[str, Optional[float]]] = {}
     if auth_token:
         client = FinvizClient(auth_token)
-        all_tickers: List[str] = unique(t for ctx in all_contexts for t in ctx.tickers)
-        print(f"[INFO] Fetching Finviz data for {len(all_tickers)} tickers...")
-        metrics_cache = client.get_all_metrics(all_tickers)
+        print(f"[INFO] Fetching Finviz data for {len(tickers)} tickers...")
+        metrics_cache = client.get_all_metrics(tickers)
         print(f"[INFO] Received data for {len(metrics_cache)} tickers")
 
-    records_by_context: List[Tuple[TickerContext, List[Dict[str, Optional[float]]]]] = [
-        (ctx, fetch_records_for_pillar(ctx, metrics_cache)) for ctx in all_contexts
-    ]
-
-    core, speculative = _split_records(records_by_context)
+    records = fetch_records(tickers, metrics_cache)
+    core, speculative = _split_records(records)
 
     csv_content = _build_consolidated_csv(core, speculative)
     csv_path = _save_consolidated_csv(csv_content, date_stamp)

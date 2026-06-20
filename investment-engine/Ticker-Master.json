@@ -1,115 +1,79 @@
-{
-  "AI Power Generation": [
-    "CEG",
-    "VST",
-    "TLN",
-    "OKLO",
-    "SMR",
-    "NNE"
-  ],
-  "AI Networking": [
-    "ANET",
-    "CRDO",
-    "ALAB",
-    "COHR",
-    "LITE"
-  ],
-  "AI Memory and Storage": [
-    "MU",
-    "WDC",
-    "STX"
-  ],
-  "AI Land": [
-    "DLR",
-    "EQIX",
-    "APLD",
-    "IRM"
-  ],
-  "AI Heating and Cooling": [
-    "VRT",
-    "MOD",
-    "AAON"
-  ],
-  "AI Grid and Power Transmission": [
-    "PWR",
-    "GEV",
-    "NVT",
-    "POWL"
-  ],
-  "AI Electrical Infrastructure": [
-    "ETN"
-  ],
-  "AI Construction": [
-    "FIX",
-    "EME",
-    "STRL"
-  ],
-  "AI Cybersecurity": [
-    "CRWD",
-    "PANW",
-    "ZS",
-    "OKTA",
-    "RBRK"
-  ],
-  "AI Semiconductor Chip Manufacturing": [
-    "AMAT",
-    "LRCX",
-    "KLAC",
-    "ONTO",
-    "ACLS",
-    "PLAB",
-    "TSM",
-    "GFS",
-    "INTC",
-    "TSEM"
-  ],
-  "AI Server and Rack Systems": [
-    "SMCI",
-    "DELL",
-    "HPE"
-  ],
-  "AI Software and Platforms": [
-    "NOW",
-    "DDOG",
-    "DT",
-    "AI",
-    "MDB"
-  ],
-  "AI Backup Power": [
-    "BE",
-    "FLNC",
-    "HYLN"
-  ],
-  "AI Cloud": [
-    "MSFT",
-    "AMZN",
-    "ORCL",
-    "CRWV",
-    "NBIS",
-    "GOOGL"
-  ],
-  "AI Fire Detection": [
-    "JCI",
-    "CARR",
-    "HON"
-  ],
-  "AI Water": [
-    "XYL",
-    "BMI",
-    "MWA"
-  ],
-  "AI Insurance and Risk": [
-    "AJG",
-    "RYAN"
-  ],
-  "AI Security": [
-    "MSI",
-    "ALRM"
-  ],
-  "AI Compute Chips": [
-    "NVDA",
-    "AMD",
-    "AVGO",
-    "MRVL"
-  ]
-}
+[
+  "CEG",
+  "VST",
+  "TLN",
+  "OKLO",
+  "SMR",
+  "NNE",
+  "ANET",
+  "CRDO",
+  "ALAB",
+  "COHR",
+  "LITE",
+  "MU",
+  "WDC",
+  "STX",
+  "DLR",
+  "EQIX",
+  "APLD",
+  "IRM",
+  "VRT",
+  "MOD",
+  "AAON",
+  "PWR",
+  "GEV",
+  "NVT",
+  "POWL",
+  "ETN",
+  "FIX",
+  "EME",
+  "STRL",
+  "CRWD",
+  "PANW",
+  "ZS",
+  "OKTA",
+  "RBRK",
+  "AMAT",
+  "LRCX",
+  "KLAC",
+  "ONTO",
+  "ACLS",
+  "PLAB",
+  "TSM",
+  "GFS",
+  "INTC",
+  "TSEM",
+  "SMCI",
+  "DELL",
+  "HPE",
+  "NOW",
+  "DDOG",
+  "DT",
+  "AI",
+  "MDB",
+  "BE",
+  "FLNC",
+  "HYLN",
+  "MSFT",
+  "AMZN",
+  "ORCL",
+  "CRWV",
+  "NBIS",
+  "GOOGL",
+  "JCI",
+  "CARR",
+  "HON",
+  "XYL",
+  "BMI",
+  "MWA",
+  "AJG",
+  "RYAN",
+  "MSI",
+  "ALRM",
+  "NVDA",
+  "AMD",
+  "AVGO",
+  "MRVL",
+  "NTNX",
+  "MGM"
+]
