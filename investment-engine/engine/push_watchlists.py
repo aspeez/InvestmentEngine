@@ -5,9 +5,9 @@ Run this inside a Claude Code session (not GitHub Actions) after the weekly
 engine run has committed a watchlist_MMDDYYYY.json to the repo.
 
 Usage:
-    python investment-engine/engine/push_watchlists.py [--date MMDDYYYY] [--sector SECTOR] [--dry-run]
+    python investment-engine/engine/push_watchlists.py [--date MMDDYYYY] [--dry-run]
 
-The script reads the most recent watchlist_*.json for the given sector,
+The script reads the most recent watchlist_*.json from investment-engine/ticker-review/,
 then prints the MCP calls needed to populate each Robinhood watchlist.
 Because the Robinhood MCP requires Claude Code's OAuth session, this script
 cannot make the API calls itself — it outputs a structured plan that Claude
@@ -21,17 +21,16 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SECTOR_DIR = REPO_ROOT / "sector"
+TICKER_REVIEW_DIR = REPO_ROOT / "ticker-review"
 
 
-def find_latest_watchlist_file(sector: str, date_stamp: str | None) -> Path | None:
-    ticker_review_dir = SECTOR_DIR / sector / "ticker-review"
-    if not ticker_review_dir.exists():
+def find_latest_watchlist_file(date_stamp: str | None) -> Path | None:
+    if not TICKER_REVIEW_DIR.exists():
         return None
     if date_stamp:
-        candidate = ticker_review_dir / f"watchlist_{date_stamp}.json"
+        candidate = TICKER_REVIEW_DIR / f"watchlist_{date_stamp}.json"
         return candidate if candidate.exists() else None
-    files = sorted(ticker_review_dir.glob("watchlist_*.json"), reverse=True)
+    files = sorted(TICKER_REVIEW_DIR.glob("watchlist_*.json"), reverse=True)
     return files[0] if files else None
 
 
@@ -43,24 +42,12 @@ def load_classification(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Print Robinhood watchlist population plan")
     parser.add_argument("--date", default=None, help="Date stamp MMDDYYYY (default: latest)")
-    parser.add_argument("--sector", default=None, help="Sector name (default: first found)")
     parser.add_argument("--dry-run", action="store_true", help="Print plan without executing")
     args = parser.parse_args()
 
-    # Resolve sector
-    if args.sector:
-        sector = args.sector
-    else:
-        sectors = [d.name for d in SECTOR_DIR.iterdir() if d.is_dir()]
-        if not sectors:
-            print("[ERROR] No sector directories found under investment-engine/sector/")
-            sys.exit(1)
-        sector = sectors[0]
-        print(f"[INFO] No sector specified — using '{sector}'")
-
-    path = find_latest_watchlist_file(sector, args.date)
+    path = find_latest_watchlist_file(args.date)
     if not path:
-        print(f"[ERROR] No watchlist classification file found for sector '{sector}'")
+        print(f"[ERROR] No watchlist classification file found in {TICKER_REVIEW_DIR}")
         sys.exit(1)
 
     print(f"[INFO] Reading: {path}")
