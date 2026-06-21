@@ -13,13 +13,14 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import requests
 
 FINVIZ_BASE_URL = "https://elite.finviz.com/export"
-# Column codes for the Finviz export endpoint (v=151)
+# Column codes for the Finviz export endpoint (v=150)
 # 1=Ticker, 65=Price, 59=RSI(14), 7=P/E, 9=PEG, 10=P/S, 6=Market Cap, 69=Target Price,
 # 16=EPS(ttm), 22=EPS Growth Q/Q, 19=EPS Growth Past 5Y, 73=Book/sh,
 # 23=Sales Growth Q/Q, 21=Sales Growth Past 5Y, 12=P/Cash, 38=Total Debt/Equity,
 # 41=Profit Margin, 39=Gross Margin, 48=Beta, 26=Insider Ownership,
-# 28=Institutional Ownership, 62=Analyst Recom, 30=Short Float, 84=Short Interest
-FINVIZ_COLUMNS = "1,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,30,84"
+# 28=Institutional Ownership, 62=Analyst Recom, 57=52W High,
+# 30=Short Float, 84=Short Interest
+FINVIZ_COLUMNS = "1,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,57,30,84"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STOCK_DATA_DIR = REPO_ROOT / "stock-data"
@@ -86,6 +87,14 @@ class FinvizClient:
         eps_growth = eps_growth_qq if eps_growth_qq is not None else eps_growth_5y
         
         
+        # Finviz "52W High" is % below the 52-week high (negative number).
+        # Convert to the actual dollar price: price / (1 + pct/100).
+        pct_from_high = p(row.get("52W High"))
+        if price is not None and price > 0 and pct_from_high is not None:
+            fifty_two_wk_high: Optional[float] = price / (1 + pct_from_high / 100)
+        else:
+            fifty_two_wk_high = None
+
         return {
             "Current Price": price,
             "RSI": p(row.get("Relative Strength Index (14)")),
@@ -105,14 +114,14 @@ class FinvizClient:
             "Insider Ownership %": p(row.get("Insider Ownership")),
             "Institutional Ownership %": p(row.get("Institutional Ownership")),
             "Analyst Recom": p(row.get("Analyst Recom")),
-            "52-Week High": None,
+            "52-Week High": fifty_two_wk_high,
             "Short Interest": p(row.get("Short Interest")),
             "Short Float %": p(row.get("Short Float")),
         }
 
     def _fetch_export(self, extra_params: str = "", timeout: int = 30) -> Dict[str, Dict[str, Optional[float]]]:
         url = (
-            f"{FINVIZ_BASE_URL}?v=151"
+            f"{FINVIZ_BASE_URL}?v=150"
             f"{extra_params}"
             f"&c={FINVIZ_COLUMNS}"
             f"&auth={self.auth_token}"
