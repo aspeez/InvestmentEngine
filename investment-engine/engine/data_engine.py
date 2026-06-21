@@ -554,7 +554,11 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     records = fetch_records(all_tickers, metrics_cache, quiet=True)
 
     qualified = sorted(
-        [r for r in records if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD],
+        [
+            r for r in records
+            if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
+            and (r.get("Upside %") or 0) > 10
+        ],
         key=lambda r: r.get("Investment Score") or 0,
         reverse=True,
     )[:UNIVERSE_TOP_N]
