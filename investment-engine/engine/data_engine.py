@@ -416,7 +416,12 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     # Group eligible tickers by sector, take top 10 per sector by investment score
     sector_buckets: Dict[str, list] = {}
     for r in records:
-        if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD and (r.get("Upside %") or 0) > 10:
+        price = r.get("Current Price")
+        if (
+            (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
+            and (r.get("Upside %") or 0) > 10
+            and (price is None or price <= 300.0)
+        ):
             sector = str(r.get("Sector") or "Unknown")
             sector_buckets.setdefault(sector, []).append(r)
 
