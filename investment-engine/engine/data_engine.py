@@ -14,12 +14,13 @@ import requests
 
 FINVIZ_BASE_URL = "https://elite.finviz.com/export"
 # Column codes for the Finviz export endpoint (v=151)
-# 1=Ticker, 65=Price, 59=RSI(14), 7=P/E, 10=P/S, 6=Market Cap, 69=Target Price,
+# 1=Ticker, 65=Price, 59=RSI(14), 7=P/E, 9=PEG, 10=P/S, 6=Market Cap, 69=Target Price,
 # 16=EPS(ttm), 22=EPS Growth Q/Q, 19=EPS Growth Past 5Y, 73=Book/sh,
 # 23=Sales Growth Q/Q, 21=Sales Growth Past 5Y, 12=P/Cash, 38=Total Debt/Equity,
 # 41=Profit Margin, 39=Gross Margin, 48=Beta, 26=Insider Ownership,
-# 28=Institutional Ownership, 62=Analyst Recom
-FINVIZ_COLUMNS = "1,65,59,7,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62"
+# 28=Institutional Ownership, 62=Analyst Recom, 57=52W High,
+# 30=Short Float, 84=Short Interest
+FINVIZ_COLUMNS = "1,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,57,30,84"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STOCK_DATA_DIR = REPO_ROOT / "stock-data"
@@ -30,9 +31,12 @@ DATE_FORMAT = "%m%d%Y"
 COLUMNS = [
     "Ticker",
     "Current Price",
+    "52-Week High",
     "RSI",
     "P/E Ratio",
+    "PEG",
     "P/S Ratio",
+    "PSG",
     "Market Cap",
     "Target Price",
     "Graham Undervalued",
@@ -46,9 +50,10 @@ COLUMNS = [
     "Insider Ownership %",
     "Institutional Ownership %",
     "Analyst Recom",
+    "Short Interest",
+    "Short Float %",
     "Investment Score",
 ]
-
 
 
 class FinvizClient:
@@ -85,6 +90,7 @@ class FinvizClient:
             "Current Price": price,
             "RSI": p(row.get("Relative Strength Index (14)")),
             "P/E Ratio": p(row.get("P/E")),
+            "PEG": p(row.get("PEG")),
             "P/S Ratio": p(row.get("P/S")),
             "Market Cap": market_cap,
             "Finviz Target Price": p(row.get("Target Price")),
@@ -99,6 +105,9 @@ class FinvizClient:
             "Insider Ownership %": p(row.get("Insider Ownership")),
             "Institutional Ownership %": p(row.get("Institutional Ownership")),
             "Analyst Recom": p(row.get("Analyst Recom")),
+            "52-Week High": p(row.get("52W High")),
+            "Short Interest": p(row.get("Short Interest")),
+            "Short Float %": p(row.get("Short Float")),
         }
 
     def get_all_metrics(self, tickers: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
@@ -199,31 +208,48 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     npm_score = norm(record.get("Net Profit Margin %"), -20.0, 40.0)     # 10%
     de_score = norm_inv(record.get("Debt/Equity"), 0.0, 3.0)             # 5%
 
-    # Valuation (25%)
-    pe = record.get("P/E Ratio")
-    pe_score: Optional[float] = 0.0 if (pe is not None and pe <= 0) else norm_inv(pe, 0.0, 60.0)  # 5%
-    ps_score = norm_inv(record.get("P/S Ratio"), 0.0, 30.0)              # 10%
+    # Valuation (20% nominal)
+    # PEG: Finviz native value; lower is better; 0=undervalued, 3=overpriced
+    peg = record.get("PEG")
+    peg_score: Optional[float] = norm_inv(peg, 0.0, 3.0) if (peg is not None and peg > 0) else None  # 5%
+    # PSG = P/S / Revenue Growth % (computed in fetch_records); lower is better
+    psg_score = norm_inv(record.get("PSG"), 0.0, 3.0)                    # 5%
     upside_score = norm(record.get("Upside %"), -30.0, 100.0)            # 10%
 
-    # Entry Timing (15%)
-    rsi = record.get("RSI")
-    # Score highest at RSI=30 (oversold), linearly to 0 at RSI=80 (overbought)
-    rsi_score: Optional[float] = clamp((80.0 - rsi) / 50.0 * 100.0, 0.0, 100.0) if rsi is not None else None  # 10%
+    # Entry Timing (15% nominal)
+    # Buy Zone: 80% of 52-Week High; score 100 at/below buy zone, 0 at 125% of buy zone
+    current_price = record.get("Current Price")
+    fifty_two_wk_high = record.get("52-Week High")
+    buy_zone_score: Optional[float] = None
+    if current_price is not None and current_price > 0 and fifty_two_wk_high is not None and fifty_two_wk_high > 0:
+        buy_zone = fifty_two_wk_high * 0.80
+        upper_bound = buy_zone * 1.25
+        if current_price <= buy_zone:
+            buy_zone_score = 100.0
+        elif current_price >= upper_bound:
+            buy_zone_score = 0.0
+        else:
+            buy_zone_score = clamp((upper_bound - current_price) / (upper_bound - buy_zone) * 100.0, 0.0, 100.0)
     # Analyst Recom: 1.0=Strong Buy (best), 5.0=Strong Sell (worst)
     recom = record.get("Analyst Recom")
     recom_score: Optional[float] = clamp((5.0 - recom) / 4.0 * 100.0, 0.0, 100.0) if recom is not None else None  # 5%
+    # Short Float %: higher = more bearish pressure; lower is better; clamp at 30%
+    short_float_score = norm_inv(record.get("Short Float %"), 0.0, 30.0) # 5%
 
+    # Nominal weights sum to 0.90 (RSI removed); total_weight normalization redistributes
+    # proportionally so missing metrics never silently deflate the score.
     weighted = [
-        (rev_score, 0.20),   # Growth 30%
+        (rev_score, 0.20),           # Growth
         (eps_score, 0.10),
-        (gm_score, 0.10),    # Financial Quality 25%
+        (gm_score, 0.10),            # Financial Quality
         (npm_score, 0.10),
         (de_score, 0.05),
-        (pe_score, 0.05),    # Valuation 30%
-        (ps_score, 0.10),
-        (upside_score, 0.15),
-        (rsi_score, 0.10),   # Entry Timing 15%
+        (peg_score, 0.05),           # Valuation
+        (psg_score, 0.05),
+        (upside_score, 0.10),
+        (buy_zone_score, 0.05),      # Entry Timing
         (recom_score, 0.05),
+        (short_float_score, 0.05),
     ]
 
     total_weight = sum(w for s, w in weighted if s is not None)
@@ -261,12 +287,21 @@ def fetch_records(
         else:
             graham_undervalued = current_price is not None and current_price < graham
 
+        ps_ratio = metrics.get("P/S Ratio")
+        rev_growth = metrics.get("Revenue Growth %")
+        psg: Optional[float] = None
+        if ps_ratio is not None and ps_ratio > 0 and rev_growth is not None and rev_growth > 0:
+            psg = ps_ratio / rev_growth
+
         record: Dict[str, object] = {
             "Ticker": ticker,
             "Current Price": current_price,
+            "52-Week High": metrics.get("52-Week High"),
             "RSI": metrics.get("RSI"),
             "P/E Ratio": metrics.get("P/E Ratio"),
-            "P/S Ratio": metrics.get("P/S Ratio"),
+            "PEG": metrics.get("PEG"),
+            "P/S Ratio": ps_ratio,
+            "PSG": psg,
             "Market Cap": metrics.get("Market Cap"),
             "Target Price": target_price,
             "Graham Undervalued": graham_undervalued,
@@ -280,6 +315,8 @@ def fetch_records(
             "Insider Ownership %": metrics.get("Insider Ownership %"),
             "Institutional Ownership %": metrics.get("Institutional Ownership %"),
             "Analyst Recom": metrics.get("Analyst Recom"),
+            "Short Interest": metrics.get("Short Interest"),
+            "Short Float %": metrics.get("Short Float %"),
         }
         record["Investment Score"] = compute_investment_score(record)
         records.append(record)
