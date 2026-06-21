@@ -3,14 +3,14 @@
     "High Conviction": [
       {
         "ticker": "NVDA",
-        "investment_score": 88.0,
+        "investment_score": 86.1,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
         "ticker": "AVGO",
-        "investment_score": 75.9,
+        "investment_score": 76.4,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
@@ -19,21 +19,21 @@
     "Pullback Watch": [
       {
         "ticker": "LITE",
-        "investment_score": 73.7,
+        "investment_score": 75.1,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       },
       {
         "ticker": "MSFT",
-        "investment_score": 68.4,
+        "investment_score": 70.2,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       },
       {
         "ticker": "AMZN",
-        "investment_score": 63.2,
+        "investment_score": 63.1,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
@@ -43,14 +43,14 @@
     "Pipeline": [
       {
         "ticker": "DLR",
-        "investment_score": 57.6,
+        "investment_score": 57.0,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
       },
       {
         "ticker": "EME",
-        "investment_score": 52.6,
+        "investment_score": 53.0,
         "tab": "Investment Master",
         "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
         "label": "WL4 \u2014 Pipeline \u26aa"
