@@ -38,7 +38,6 @@ COLUMNS = [
     "PSG",
     "Market Cap",
     "Target Price",
-    "Graham Undervalued",
     "Upside %",
     "Revenue Growth %",
     "EPS Growth %",
@@ -183,12 +182,6 @@ def ensure_directories() -> None:
 
 
 
-def _graham_number(eps: Optional[float], bvps: Optional[float]) -> Optional[float]:
-    if eps is None or bvps is None or eps <= 0 or bvps <= 0:
-        return None
-    return math.sqrt(22.5 * eps * bvps)
-
-
 def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[float]:
     def clamp(val: float, lo: float, hi: float) -> float:
         return max(lo, min(hi, val))
@@ -300,12 +293,6 @@ def fetch_records(
         else:
             upside_pct = None
 
-        graham = _graham_number(eps, bvps)
-        if graham is None:
-            graham_undervalued: Optional[bool] = None
-        else:
-            graham_undervalued = current_price is not None and current_price < graham
-
         ps_ratio = metrics.get("P/S Ratio")
         rev_growth = metrics.get("Revenue Growth %")
         psg: Optional[float] = None
@@ -324,7 +311,6 @@ def fetch_records(
             "PSG": psg,
             "Market Cap": metrics.get("Market Cap"),
             "Target Price": target_price,
-            "Graham Undervalued": graham_undervalued,
             "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
             "Revenue Growth Suspect": metrics.get("Revenue Growth Suspect", False),
