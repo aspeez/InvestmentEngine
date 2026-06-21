@@ -156,8 +156,8 @@ class FinvizClient:
         return result
 
     def get_universe_metrics(self) -> Dict[str, Dict[str, Optional[float]]]:
-        """Export all Finviz tickers without a ticker filter."""
-        return self._fetch_export(timeout=120)
+        """Export Finviz tickers pre-filtered by scoring criteria."""
+        return self._fetch_export(f"&f={FINVIZ_UNIVERSE_FILTERS}", timeout=120)
 
 
 def ensure_directories() -> None:
@@ -270,6 +270,11 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
 
 DISCOVERY_SCORE_THRESHOLD = 70.0
+UNIVERSE_TOP_N = 100
+
+# Finviz screener pre-filters aligned with scoring criteria (highest-weight metrics first):
+# revenue growth QoQ > 10%, positive EPS growth, positive net margin, Buy or Strong Buy rating
+FINVIZ_UNIVERSE_FILTERS = "fa_salesqoq_o10,fa_epsqoq_pos,fa_netmargin_pos,an_recomendation_buybetter"
 
 
 def fetch_records(
@@ -547,9 +552,13 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     all_tickers = list(metrics_cache.keys())
     records = fetch_records(all_tickers, metrics_cache, quiet=True)
 
-    qualified = [r for r in records if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD]
-    print(f"[INFO] {len(qualified)} tickers with Investment Score >= {DISCOVERY_SCORE_THRESHOLD}:")
-    for r in sorted(qualified, key=lambda r: r.get("Investment Score") or 0, reverse=True):
+    qualified = sorted(
+        [r for r in records if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD],
+        key=lambda r: r.get("Investment Score") or 0,
+        reverse=True,
+    )[:UNIVERSE_TOP_N]
+    print(f"[INFO] {len(qualified)} tickers with Investment Score >= {DISCOVERY_SCORE_THRESHOLD} (top {UNIVERSE_TOP_N}):")
+    for r in qualified:
         print(f"  {r['Ticker']:<8} Score: {r.get('Investment Score')}")
 
     core, speculative = _split_records(qualified)
