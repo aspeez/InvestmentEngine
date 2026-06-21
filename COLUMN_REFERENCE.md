@@ -207,7 +207,7 @@ This document covers every column in the consolidated CSV output, including what
 
 **What it means:** Year-over-year percentage change in revenue. Uses Sales Growth Q/Q (quarter over quarter) as the primary source, with Sales Growth Past 5 Years as a fallback. Both sourced from Finviz.
 
-**Values:** Float percentage (e.g., `18.5` = 18.5% growth). Can be negative.
+**Values:** Float percentage (e.g., `18.5` = 18.5% growth). Can be negative. Values beyond ±300% are treated as data artifacts (typically caused by a near-zero prior-period base inflating Finviz's Q/Q math) and are nulled out; the fallback to the 5-year figure still applies in that case.
 
 | Range | Investment signal |
 |---|---|
@@ -225,7 +225,7 @@ This document covers every column in the consolidated CSV output, including what
 
 **What it means:** Year-over-year percentage change in earnings per share. Uses EPS Growth Q/Q as the primary source, with EPS Growth Past 5 Years as a fallback. Both sourced from Finviz.
 
-**Values:** Float percentage. Can be very large (triple-digit) or negative.
+**Values:** Float percentage. Can be negative. Values beyond ±300% are treated as data artifacts and are nulled out; the fallback to the 5-year figure still applies in that case.
 
 | Range | Investment signal |
 |---|---|
