@@ -24,6 +24,7 @@ FINVIZ_COLUMNS = "1,3,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,6
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STOCK_DATA_DIR = REPO_ROOT / "stock-data"
+TICKER_MASTER_PATH = REPO_ROOT / "Ticker-Master.json"
 DATE_FORMAT = "%m%d%Y"
 
 COLUMNS = [
@@ -68,16 +69,7 @@ class FinvizClient:
         except ValueError:
             return None
 
-    def _clamp_growth(self, value: Optional[float], cap: float = 300.0) -> Optional[float]:
-        """Treat growth % beyond a sane cap as a data artifact (e.g. near-zero prior-period
-        base in Finviz's Q/Q calc) and null it out rather than passing through a nonsense value."""
-        if value is None:
-            return None
-        if abs(value) > cap:
-            return None
-        return value
-
-    def _parse_row(self, row: dict) -> Dict[str, Optional[float]]:
+    def _parse_row(self, row: dict) -> Dict[str, object]:
         p = self._parse_float
 
         price = p(row.get("Price"))
@@ -85,20 +77,13 @@ class FinvizClient:
         # Finviz exports Market Cap in millions — convert to full dollars, store as int
         market_cap = int(market_cap_raw * 1_000_000) if market_cap_raw is not None else None
 
-        rev_qq_raw = p(row.get("Sales Growth Quarter Over Quarter"))
-        rev_5y_raw = p(row.get("Sales Growth Past 5 Years"))
-        rev_growth_qq = self._clamp_growth(rev_qq_raw)
-        rev_growth_5y = self._clamp_growth(rev_5y_raw)
+        rev_growth_qq = p(row.get("Sales Growth Quarter Over Quarter"))
+        rev_growth_5y = p(row.get("Sales Growth Past 5 Years"))
         rev_growth = rev_growth_qq if rev_growth_qq is not None else rev_growth_5y
-        # Finviz had data but every source was clamped — likely a near-zero base artifact
-        rev_growth_suspect = rev_growth is None and (rev_qq_raw is not None or rev_5y_raw is not None)
 
-        eps_qq_raw = p(row.get("EPS Growth Quarter Over Quarter"))
-        eps_5y_raw = p(row.get("EPS Growth Past 5 Years"))
-        eps_growth_qq = self._clamp_growth(eps_qq_raw)
-        eps_growth_5y = self._clamp_growth(eps_5y_raw)
+        eps_growth_qq = p(row.get("EPS Growth Quarter Over Quarter"))
+        eps_growth_5y = p(row.get("EPS Growth Past 5 Years"))
         eps_growth = eps_growth_qq if eps_growth_qq is not None else eps_growth_5y
-        eps_growth_suspect = eps_growth is None and (eps_qq_raw is not None or eps_5y_raw is not None)
         
         
         # Finviz "52W High" is % below the 52-week high (negative number).
@@ -121,9 +106,7 @@ class FinvizClient:
             "EPS": p(row.get("EPS (ttm)")),
             "Book Value Per Share": p(row.get("Book/sh")),
             "Revenue Growth %": rev_growth,
-            "Revenue Growth Suspect": rev_growth_suspect,
             "EPS Growth %": eps_growth,
-            "EPS Growth Suspect": eps_growth_suspect,
             "Gross Margin %": p(row.get("Gross Margin")),
             "Net Profit Margin %": p(row.get("Profit Margin")),
             "Debt/Equity": p(row.get("Total Debt/Equity")),
@@ -198,13 +181,7 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
     # Growth (30%)
     rev_score = norm(record.get("Revenue Growth %"), -50.0, 100.0)       # 20%
-    # If Finviz had data but every source was clamped as an artifact, score as 0
-    # rather than redistributing weight as though the metric were simply missing.
-    if rev_score is None and record.get("Revenue Growth Suspect", False):
-        rev_score = 0.0
     eps_score = norm(record.get("EPS Growth %"), -50.0, 100.0)           # 10%
-    if eps_score is None and record.get("EPS Growth Suspect", False):
-        eps_score = 0.0
 
     # Financial Quality (25%)
     gm_score = norm(record.get("Gross Margin %"), 0.0, 100.0)            # 10%
@@ -262,12 +239,9 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     return round(weighted_sum / total_weight, 1)
 
 
-DISCOVERY_SCORE_THRESHOLD = 70.0
-UNIVERSE_TOP_PER_SECTOR = 10
-
-# Finviz screener pre-filters aligned with scoring criteria (highest-weight metrics first):
-# revenue growth QoQ > 10%, positive EPS growth, positive net margin, Buy or Strong Buy rating
-FINVIZ_UNIVERSE_FILTERS = "fa_epsqoq_pos,fa_netmargin_pos,an_recomendation_buybetter"
+# Finviz screener filters: small-to-mid cap, NASDAQ/NYSE, D/E < 1, net margin > 10%,
+# PEG 0-1.5, avg volume > 1M, price up to $300
+FINVIZ_UNIVERSE_FILTERS = "cap_1to,exch_nasd|nyse,fa_debteq_u1,fa_netmargin_o10,fa_peg_0to1.5,sh_avgvol_o1000"
 
 
 def fetch_records(
@@ -313,9 +287,7 @@ def fetch_records(
             "Target Price": target_price,
             "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
-            "Revenue Growth Suspect": metrics.get("Revenue Growth Suspect", False),
             "EPS Growth %": metrics.get("EPS Growth %"),
-            "EPS Growth Suspect": metrics.get("EPS Growth Suspect", False),
             "Gross Margin %": metrics.get("Gross Margin %"),
             "Net Profit Margin %": metrics.get("Net Profit Margin %"),
             "Debt/Equity": metrics.get("Debt/Equity"),
@@ -396,30 +368,23 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
         metrics_cache = client.get_universe_metrics()
         print(f"[INFO] Finviz universe returned {len(metrics_cache)} tickers")
 
-    all_tickers = list(metrics_cache.keys())
+        # Merge in any manual tickers from Ticker-Master.json not already in the scan
+        if TICKER_MASTER_PATH.exists():
+            master_tickers = json.loads(TICKER_MASTER_PATH.read_text(encoding="utf-8"))
+            manual = [t for t in master_tickers if t not in metrics_cache]
+            if manual:
+                print(f"[INFO] Fetching {len(manual)} manual tickers from Ticker-Master.json...")
+                manual_metrics = client.get_all_metrics(manual)
+                metrics_cache.update(manual_metrics)
+                print(f"[INFO] Total ticker pool after merge: {len(metrics_cache)}")
+
+    all_tickers = list(dict.fromkeys(metrics_cache.keys()))  # dedup, preserve order
     records = fetch_records(all_tickers, metrics_cache, quiet=True)
 
-    # Group eligible tickers by sector, take top 10 per sector by investment score
-    sector_buckets: Dict[str, list] = {}
-    for r in records:
-        price = r.get("Current Price")
-        if (
-            (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
-            and (r.get("Upside %") or 0) > 10
-            and (price is None or price <= 300.0)
-        ):
-            sector = str(r.get("Sector") or "Unknown")
-            sector_buckets.setdefault(sector, []).append(r)
+    # Sort all tickers by investment score descending
+    qualified = sorted(records, key=lambda r: r.get("Investment Score") or 0, reverse=True)
 
-    selected = []
-    for sector, bucket in sector_buckets.items():
-        top = sorted(bucket, key=lambda r: r.get("Investment Score") or 0, reverse=True)[:UNIVERSE_TOP_PER_SECTOR]
-        selected.extend(top)
-
-    # Sort all selected tickers by investment score descending
-    qualified = sorted(selected, key=lambda r: r.get("Investment Score") or 0, reverse=True)
-
-    print(f"[INFO] {len(qualified)} tickers selected (top {UNIVERSE_TOP_PER_SECTOR} per sector, score >= {DISCOVERY_SCORE_THRESHOLD}, upside > 10%):")
+    print(f"[INFO] {len(qualified)} tickers scored:")
     for i, r in enumerate(qualified, start=1):
         print(f"  #{i:<4} {r['Ticker']:<8} [{r.get('Sector', '')}] Score: {r.get('Investment Score')}")
 

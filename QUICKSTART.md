@@ -30,14 +30,13 @@ python investment-engine/engine/data_engine.py
 
 **What it does:**
 
-1. Calls the Finviz Elite export API with pre-filters (positive EPS growth, positive net margin, Buy/Strong Buy analyst rating) to narrow the universe
-2. Computes Buy Zone, Graham Number, and Upside % for each ticker
-3. Computes Investment Score (0–100 weighted composite) for every ticker
-4. Keeps only tickers with Investment Score ≥ 70 and Upside % > 10%
-5. Selects top 10 per sector (up to 120 stocks across 12 sectors) for diversity
-6. Sorts all selected tickers by Investment Score descending
-7. Splits tickers: ≤ 3 null data columns → Investment Master; > 3 null columns → Speculative Investments
-8. Writes `investment-engine/stock-data/consolidated_MMDDYYYY.csv`
+1. Calls the Finviz Elite export API with screener filters: small-to-mid cap, NASDAQ/NYSE, D/E < 1, net margin > 10%, PEG 0–1.5, avg volume > 1M
+2. Fetches any tickers in `investment-engine/Ticker-Master.json` not already returned by the screener and merges them into the pool
+3. Computes Buy Zone, PSG, and Upside % for each ticker
+4. Computes Investment Score (0–100 weighted composite) for every ticker
+5. Sorts all tickers by Investment Score descending
+6. Splits tickers: ≤ 3 null data columns → Investment Master; > 3 null columns → Speculative Investments
+7. Writes `investment-engine/stock-data/consolidated_MMDDYYYY.csv`
 
 ## 5. Review the CSV
 
@@ -50,7 +49,6 @@ Open `investment-engine/stock-data/consolidated_MMDDYYYY.csv`:
 | **Buy Zone** | 52-Week High × 0.80 — disciplined entry target |
 | **Target Price** | Analyst consensus from Finviz |
 | **Upside %** | ((Target − Price) / Price) × 100 |
-| **Graham Undervalued** | True if trading below Graham Number. None if data missing. |
 | **Analyst Recom** | 1.0 = Strong Buy, 5.0 = Strong Sell |
 | **Tab** | Investment Master (≤ 3 nulls) or Speculative Investments (> 3 nulls) |
 
@@ -88,8 +86,8 @@ Finviz has no analyst consensus target for that ticker. Upside % will be None.
 **`[WARN] Finviz request failed`**
 Network issue or invalid auth token. Confirm Finviz Elite is accessible and your token is correct.
 
-**Fewer than 120 rows in the CSV**
-Not all 12 sectors will always have 10 stocks meeting both the score ≥ 70 and upside > 10% thresholds. The row count reflects what actually qualifies on that run.
-
 **A known ticker is missing from the output**
-The Finviz pre-filters (`fa_epsqoq_pos`, `fa_netmargin_pos`, `an_recomendation_buybetter`) may have excluded it. A ticker must have positive EPS growth, positive net margin, and a Buy or Strong Buy analyst rating to enter the scored pool.
+Add it to `investment-engine/Ticker-Master.json`. Every ticker in that file is fetched and scored on every run regardless of whether it passes the Finviz screener filters.
+
+**Fewer rows than expected in the CSV**
+Check `[WARN]` lines in the run log. Finviz occasionally returns no data for individual tickers — those will be absent from the output.

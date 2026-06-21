@@ -4,14 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/aspeez/InvestmentEngine.svg)](https://github.com/aspeez/InvestmentEngine/issues)
 
-Automated daily investment research and scoring platform. Scans the full Finviz Elite universe, scores every qualifying stock on a 0–100 composite, and surfaces the top 10 per sector in a consolidated CSV sorted by Investment Score.
+Automated daily investment research and scoring platform. Pulls stocks from a Finviz Elite screener and any manual tickers in `Ticker-Master.json`, scores every stock on a 0–100 composite, and exports the full results in a consolidated CSV sorted by Investment Score.
 
 ## ✨ Features
 
 - **📊 Automated Daily Scoring** — Runs every day at 7:00 AM EST via GitHub Actions
-- **🌐 Full Universe Scan** — Scans all Finviz-covered stocks, not a fixed ticker list
+- **🌐 Finviz Screener + Manual List** — Pulls from a Finviz Elite screener filter and merges in any tickers from `Ticker-Master.json`
 - **🔢 Weighted Composite Scoring** — 0–100 investment score with dynamic weight redistribution for missing data
-- **🗂️ Sector Diversification** — Top 10 stocks per sector across all 12 Finviz sectors (up to 120 total)
+- **📋 Full Output** — Every ticker is scored and written to the workbook, no score threshold or sector cap applied
 - **🔄 CSV Export** — Consolidated scored output sorted by Investment Score for Claude.ai review
 
 ## 📋 Table of Contents
@@ -84,22 +84,20 @@ After each run, a GitHub Issue signals that Phase 2 is ready.
 
 Every day at 7:00 AM EST (or manually triggered):
 
-1. **Scan Finviz universe** — calls the Finviz Elite export API with pre-filters (positive EPS growth, positive net margin, Buy/Strong Buy analyst rating) to narrow the universe before downloading
-2. **Derive metrics:**
+1. **Scan Finviz screener** — calls the Finviz Elite export API with filters: small-to-mid cap, NASDAQ/NYSE, D/E < 1, net margin > 10%, PEG 0–1.5, avg volume > 1M
+2. **Merge manual tickers** — any tickers in `Ticker-Master.json` not already returned by the screener are fetched separately and added to the pool
+3. **Derive metrics:**
    - Buy Zone = 52-Week High × 0.80
    - PSG = P/S Ratio ÷ Revenue Growth %
-   - Graham Number = √(22.5 × EPS × Book/sh)
    - Upside % = ((Target − Price) / Price) × 100
-3. **Compute Investment Score** — 0–100 weighted composite across 11 metrics
-4. **Filter** — keep only tickers with Investment Score ≥ 70 and Upside % > 10%
-5. **Select top 10 per sector** — picks the highest-scoring 10 from each of the 12 Finviz sectors for diversity (up to 120 total)
-6. **Sort** — all selected tickers ordered by Investment Score descending
-7. **Split tickers:**
+4. **Compute Investment Score** — 0–100 weighted composite across 11 metrics for every ticker
+5. **Sort** — all tickers ordered by Investment Score descending
+6. **Split tickers:**
    - ≤ 3 null data columns → Investment Master
    - \> 3 null data columns → Speculative Investments
-8. **Export consolidated CSV** — `investment-engine/stock-data/consolidated_MMDDYYYY.csv`
-9. **Commit and push** all output files
-10. **Create GitHub Issue** — signals Phase 2 is ready
+7. **Export consolidated CSV** — `investment-engine/stock-data/consolidated_MMDDYYYY.csv`
+8. **Commit and push** all output files
+9. **Create GitHub Issue** — signals Phase 2 is ready
 
 ### Phase 2 — Claude.ai Investment Engine Project (Interactive)
 
@@ -122,11 +120,11 @@ Close the GitHub Issue when done.
 ```
 InvestmentEngine/
 ├── investment-engine/
-│   ├── Ticker-Master.json                 ← Retained for reference; not used as engine input
+│   ├── Ticker-Master.json                 ← Manual ticker list merged into every run
 │   ├── engine/
 │   │   └── data_engine.py                 ← Phase 1 engine
 │   └── stock-data/
-│       └── consolidated_MMDDYYYY.csv      ← Scored output (up to 120 stocks)
+│       └── consolidated_MMDDYYYY.csv      ← Scored output (all tickers, no cap)
 ├── .github/
 │   └── workflows/
 │       └── data_engine.yml
@@ -232,11 +230,11 @@ Network issue or invalid auth token. Confirm Finviz Elite is accessible and your
 
 ### A known ticker is missing from the output
 
-The Finviz pre-filters (`fa_epsqoq_pos`, `fa_netmargin_pos`, `an_recomendation_buybetter`) may have excluded it. A ticker must have positive EPS growth, positive net margin, and a Buy or Strong Buy analyst rating to enter the scored pool. Tickers failing these gates are excluded before scoring.
+Add it to `investment-engine/Ticker-Master.json`. Every ticker in that file is fetched and scored on every run regardless of whether it passes the Finviz screener filters.
 
-### Fewer than 120 rows in the CSV
+### The CSV has fewer rows than expected
 
-Not all 12 sectors will always have 10 stocks meeting both the score ≥ 70 and upside > 10% thresholds. The output row count reflects what actually qualifies on that run.
+Check `[WARN]` lines in the run log. Finviz occasionally returns no data for individual tickers — those will be absent from the output.
 
 ---
 
