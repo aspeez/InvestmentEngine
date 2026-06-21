@@ -18,6 +18,13 @@
     ],
     "Pullback Watch": [
       {
+        "ticker": "CEG",
+        "investment_score": 63.8,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
         "ticker": "LITE",
         "investment_score": 75.1,
         "tab": "Investment Master",
@@ -37,31 +44,66 @@
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
+        "ticker": "AJG",
+        "investment_score": 66.2,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       }
     ],
-    "Deep Value": [],
-    "Pipeline": [
+    "Deep Value": [
       {
         "ticker": "DLR",
         "investment_score": 57.0,
         "tab": "Investment Master",
-        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
-        "label": "WL4 \u2014 Pipeline \u26aa"
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "MOD",
+        "investment_score": 59.6,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
       },
       {
         "ticker": "EME",
         "investment_score": 53.0,
         "tab": "Investment Master",
-        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
-        "label": "WL4 \u2014 Pipeline \u26aa"
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "HPE",
+        "investment_score": 67.5,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "NOW",
+        "investment_score": 64.9,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "GOOGL",
+        "investment_score": 67.7,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
       }
-    ]
+    ],
+    "Pipeline": []
   },
   "counts": {
     "High Conviction": 2,
-    "Pullback Watch": 3,
-    "Deep Value": 0,
-    "Pipeline": 2
+    "Pullback Watch": 5,
+    "Deep Value": 6,
+    "Pipeline": 0
   },
-  "unqualified_count": 70
+  "unqualified_count": 64
 }
