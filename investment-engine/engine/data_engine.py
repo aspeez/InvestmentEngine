@@ -114,7 +114,7 @@ class FinvizClient:
         """Single bulk export call — returns a dict keyed by ticker symbol."""
         ticker_param = ",".join(tickers)
         url = (
-            f"{FINVIZ_BASE_URL}?v=151"
+            f"{FINVIZ_BASE_URL}?v=150"
             f"&t={ticker_param}"
             f"&c={FINVIZ_COLUMNS}"
             f"&auth={self.auth_token}"
