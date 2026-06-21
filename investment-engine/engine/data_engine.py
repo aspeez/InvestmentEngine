@@ -13,7 +13,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import requests
 
 FINVIZ_BASE_URL = "https://elite.finviz.com/export"
-# Column codes for the Finviz export endpoint (v=151)
+# Column codes for the Finviz export endpoint (v=150)
 # 1=Ticker, 65=Price, 59=RSI(14), 7=P/E, 9=PEG, 10=P/S, 6=Market Cap, 69=Target Price,
 # 16=EPS(ttm), 22=EPS Growth Q/Q, 19=EPS Growth Past 5Y, 73=Book/sh,
 # 23=Sales Growth Q/Q, 21=Sales Growth Past 5Y, 12=P/Cash, 38=Total Debt/Equity,
@@ -114,7 +114,7 @@ class FinvizClient:
         """Single bulk export call — returns a dict keyed by ticker symbol."""
         ticker_param = ",".join(tickers)
         url = (
-            f"{FINVIZ_BASE_URL}?v=151"
+            f"{FINVIZ_BASE_URL}?v=150"
             f"&t={ticker_param}"
             f"&c={FINVIZ_COLUMNS}"
             f"&auth={self.auth_token}"
