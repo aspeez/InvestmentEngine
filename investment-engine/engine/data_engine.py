@@ -133,6 +133,9 @@ class FinvizClient:
             print(f"[WARN] Finviz CSV parse failed: {exc}")
             return {}
 
+        if rows:
+            print(f"[DEBUG] Finviz CSV headers: {list(rows[0].keys())}")
+
         if not rows:
             print("[WARN] Finviz returned no data")
             return {}
