@@ -14,13 +14,13 @@ import requests
 
 FINVIZ_BASE_URL = "https://elite.finviz.com/export"
 # Column codes for the Finviz export endpoint (v=150)
-# 1=Ticker, 65=Price, 59=RSI(14), 7=P/E, 9=PEG, 10=P/S, 6=Market Cap, 69=Target Price,
+# 1=Ticker, 3=Sector, 65=Price, 59=RSI(14), 7=P/E, 9=PEG, 10=P/S, 6=Market Cap, 69=Target Price,
 # 16=EPS(ttm), 22=EPS Growth Q/Q, 19=EPS Growth Past 5Y, 73=Book/sh,
 # 23=Sales Growth Q/Q, 21=Sales Growth Past 5Y, 12=P/Cash, 38=Total Debt/Equity,
 # 41=Profit Margin, 39=Gross Margin, 48=Beta, 26=Insider Ownership,
 # 28=Institutional Ownership, 62=Analyst Recom, 57=52W High,
 # 30=Short Float, 84=Short Interest
-FINVIZ_COLUMNS = "1,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,57,30,84"
+FINVIZ_COLUMNS = "1,3,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,57,30,84"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STOCK_DATA_DIR = REPO_ROOT / "stock-data"
@@ -31,6 +31,7 @@ DATE_FORMAT = "%m%d%Y"
 COLUMNS = [
     "Rank",
     "Ticker",
+    "Sector",
     "Current Price",
     "52-Week High",
     "RSI",
@@ -97,6 +98,7 @@ class FinvizClient:
             fifty_two_wk_high = None
 
         return {
+            "Sector": row.get("Sector", ""),
             "Current Price": price,
             "RSI": p(row.get("Relative Strength Index (14)")),
             "P/E Ratio": p(row.get("P/E")),
@@ -271,7 +273,7 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
 
 DISCOVERY_SCORE_THRESHOLD = 70.0
-UNIVERSE_TOP_N = 100
+UNIVERSE_TOP_PER_SECTOR = 10
 
 # Finviz screener pre-filters aligned with scoring criteria (highest-weight metrics first):
 # revenue growth QoQ > 10%, positive EPS growth, positive net margin, Buy or Strong Buy rating
@@ -315,6 +317,7 @@ def fetch_records(
 
         record: Dict[str, object] = {
             "Ticker": ticker,
+            "Sector": metrics.get("Sector", ""),
             "Current Price": current_price,
             "52-Week High": metrics.get("52-Week High"),
             "RSI": metrics.get("RSI"),
@@ -553,20 +556,26 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
     all_tickers = list(metrics_cache.keys())
     records = fetch_records(all_tickers, metrics_cache, quiet=True)
 
-    qualified = sorted(
-        [
-            r for r in records
-            if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
-            and (r.get("Upside %") or 0) > 10
-        ],
-        key=lambda r: r.get("Investment Score") or 0,
-        reverse=True,
-    )[:UNIVERSE_TOP_N]
+    # Group eligible tickers by sector, take top 10 per sector by investment score
+    sector_buckets: Dict[str, list] = {}
+    for r in records:
+        if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD and (r.get("Upside %") or 0) > 10:
+            sector = str(r.get("Sector") or "Unknown")
+            sector_buckets.setdefault(sector, []).append(r)
+
+    selected = []
+    for sector, bucket in sector_buckets.items():
+        top = sorted(bucket, key=lambda r: r.get("Investment Score") or 0, reverse=True)[:UNIVERSE_TOP_PER_SECTOR]
+        selected.extend(top)
+
+    # Sort all selected tickers by investment score and assign global rank
+    qualified = sorted(selected, key=lambda r: r.get("Investment Score") or 0, reverse=True)
     for rank, r in enumerate(qualified, start=1):
         r["Rank"] = rank
-    print(f"[INFO] {len(qualified)} tickers with Investment Score >= {DISCOVERY_SCORE_THRESHOLD} (top {UNIVERSE_TOP_N}):")
+
+    print(f"[INFO] {len(qualified)} tickers selected (top {UNIVERSE_TOP_PER_SECTOR} per sector, score >= {DISCOVERY_SCORE_THRESHOLD}, upside > 10%):")
     for r in qualified:
-        print(f"  #{r['Rank']:<4} {r['Ticker']:<8} Score: {r.get('Investment Score')}")
+        print(f"  #{r['Rank']:<4} {r['Ticker']:<8} [{r.get('Sector', '')}] Score: {r.get('Investment Score')}")
 
     core, speculative = _split_records(qualified)
 
