@@ -89,7 +89,7 @@ class FinvizClient:
         
         # Finviz "52W High" is % below the 52-week high (negative number).
         # Convert to the actual dollar price: price / (1 + pct/100).
-        pct_from_high = p(row.get("52W High"))
+        pct_from_high = p(row.get("52-Week High"))
         if price is not None and price > 0 and pct_from_high is not None:
             fifty_two_wk_high: Optional[float] = price / (1 + pct_from_high / 100)
         else:
