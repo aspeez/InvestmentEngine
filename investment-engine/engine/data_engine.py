@@ -29,6 +29,7 @@ MASTER_JSON_PATH = REPO_ROOT / "Ticker-Master.json"
 DATE_FORMAT = "%m%d%Y"
 
 COLUMNS = [
+    "Rank",
     "Ticker",
     "Current Price",
     "52-Week High",
@@ -557,9 +558,11 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
         key=lambda r: r.get("Investment Score") or 0,
         reverse=True,
     )[:UNIVERSE_TOP_N]
+    for rank, r in enumerate(qualified, start=1):
+        r["Rank"] = rank
     print(f"[INFO] {len(qualified)} tickers with Investment Score >= {DISCOVERY_SCORE_THRESHOLD} (top {UNIVERSE_TOP_N}):")
     for r in qualified:
-        print(f"  {r['Ticker']:<8} Score: {r.get('Investment Score')}")
+        print(f"  #{r['Rank']:<4} {r['Ticker']:<8} Score: {r.get('Investment Score')}")
 
     core, speculative = _split_records(qualified)
 
