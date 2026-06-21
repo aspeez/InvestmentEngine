@@ -533,52 +533,26 @@ def _save_consolidated_csv(csv_content: str, date_stamp: str) -> Path:
 
 def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
-    tickers = load_master_config()
-    ticker_set = set(tickers)
 
     EST = timezone(timedelta(hours=-5))
     date_stamp = datetime.now(tz=EST).strftime(DATE_FORMAT)
 
-    client: Optional[FinvizClient] = None
     metrics_cache: Dict[str, Dict[str, Optional[float]]] = {}
     if auth_token:
         client = FinvizClient(auth_token)
-        print(f"[INFO] Fetching Finviz data for {len(tickers)} tickers...")
-        metrics_cache = client.get_all_metrics(tickers)
-        print(f"[INFO] Received data for {len(metrics_cache)} tickers")
+        print("[INFO] Running Finviz universe scan...")
+        metrics_cache = client.get_universe_metrics()
+        print(f"[INFO] Finviz universe returned {len(metrics_cache)} tickers")
 
-    records = fetch_records(tickers, metrics_cache)
-    core, speculative = _split_records(records)
+    all_tickers = list(metrics_cache.keys())
+    records = fetch_records(all_tickers, metrics_cache, quiet=True)
 
-    # ── Discovery scan ──────────────────────────────────────────────────────────
-    high_score_count = sum(
-        1 for r in records if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
-    )
-    print(f"[INFO] {high_score_count} portfolio tickers score >= {DISCOVERY_SCORE_THRESHOLD} (discovery threshold)")
+    qualified = [r for r in records if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD]
+    print(f"[INFO] {len(qualified)} tickers with Investment Score >= {DISCOVERY_SCORE_THRESHOLD}:")
+    for r in sorted(qualified, key=lambda r: r.get("Investment Score") or 0, reverse=True):
+        print(f"  {r['Ticker']:<8} Score: {r.get('Investment Score')}")
 
-    if client is not None:
-        print("[INFO] Running Finviz universe scan for new discoveries...")
-        universe_metrics = client.get_universe_metrics()
-        print(f"[INFO] Finviz universe returned {len(universe_metrics)} tickers")
-
-        new_tickers = [t for t in universe_metrics if t not in ticker_set]
-        discovery_records = fetch_records(new_tickers, universe_metrics, quiet=True)
-        discovery_high = [
-            r for r in discovery_records
-            if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
-        ]
-
-        if discovery_high:
-            disc_core, disc_speculative = _split_records(discovery_high)
-            core = core + disc_core
-            speculative = speculative + disc_speculative
-            sorted_disc = sorted(discovery_high, key=lambda r: r.get("Investment Score") or 0, reverse=True)
-            print(f"\n[INFO] {len(discovery_high)} new tickers discovered with Investment Score >= {DISCOVERY_SCORE_THRESHOLD}:")
-            for r in sorted_disc:
-                print(f"  {r['Ticker']:<8} Score: {r.get('Investment Score')}")
-        else:
-            print("[INFO] No new tickers discovered above the threshold")
-    # ────────────────────────────────────────────────────────────────────────────
+    core, speculative = _split_records(qualified)
 
     csv_content = _build_consolidated_csv(core, speculative)
     csv_path = _save_consolidated_csv(csv_content, date_stamp)
