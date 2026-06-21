@@ -64,7 +64,7 @@ $env:FINVIZ = "your_finviz_auth_token_here"
 python investment-engine/engine/data_engine.py
 ```
 
-Output files appear in `investment-engine/stock-data/` and `investment-engine/ticker-review/`.
+Output files appear in `investment-engine/stock-data/`.
 
 ### 6. Set Up GitHub Actions
 
