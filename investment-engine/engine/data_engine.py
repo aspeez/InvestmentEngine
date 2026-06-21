@@ -69,6 +69,15 @@ class FinvizClient:
         except ValueError:
             return None
 
+    def _clamp_growth(self, value: Optional[float], cap: float = 300.0) -> Optional[float]:
+        """Treat growth % beyond a sane cap as a data artifact (e.g. near-zero prior-period
+        base in Finviz's Q/Q calc) and null it out rather than passing through a nonsense value."""
+        if value is None:
+            return None
+        if abs(value) > cap:
+            return None
+        return value
+
     def _parse_row(self, row: dict) -> Dict[str, Optional[float]]:
         p = self._parse_float
 
@@ -77,12 +86,12 @@ class FinvizClient:
         # Finviz exports Market Cap in millions — convert to full dollars, store as int
         market_cap = int(market_cap_raw * 1_000_000) if market_cap_raw is not None else None
 
-        rev_growth_qq = p(row.get("Sales Growth Quarter Over Quarter"))
-        rev_growth_5y = p(row.get("Sales Growth Past 5 Years"))
+        rev_growth_qq = self._clamp_growth(p(row.get("Sales Growth Quarter Over Quarter")))
+        rev_growth_5y = self._clamp_growth(p(row.get("Sales Growth Past 5 Years")))
         rev_growth = rev_growth_qq if rev_growth_qq is not None else rev_growth_5y
 
-        eps_growth_qq = p(row.get("EPS Growth Quarter Over Quarter"))
-        eps_growth_5y = p(row.get("EPS Growth Past 5 Years"))
+        eps_growth_qq = self._clamp_growth(p(row.get("EPS Growth Quarter Over Quarter")))
+        eps_growth_5y = self._clamp_growth(p(row.get("EPS Growth Past 5 Years")))
         eps_growth = eps_growth_qq if eps_growth_qq is not None else eps_growth_5y
         
         
