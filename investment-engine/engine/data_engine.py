@@ -8,7 +8,7 @@ import math
 import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -24,12 +24,9 @@ FINVIZ_COLUMNS = "1,3,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,6
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STOCK_DATA_DIR = REPO_ROOT / "stock-data"
-TICKER_REVIEW_DIR = REPO_ROOT / "ticker-review"
-MASTER_JSON_PATH = REPO_ROOT / "Ticker-Master.json"
 DATE_FORMAT = "%m%d%Y"
 
 COLUMNS = [
-    "Rank",
     "Ticker",
     "Sector",
     "Current Price",
@@ -165,30 +162,6 @@ class FinvizClient:
 
 def ensure_directories() -> None:
     STOCK_DATA_DIR.mkdir(exist_ok=True)
-    TICKER_REVIEW_DIR.mkdir(exist_ok=True)
-
-
-def normalize_ticker(value: object) -> str:
-    return str(value).strip().upper()
-
-
-def unique(values: Iterable[str]) -> List[str]:
-    seen = set()
-    ordered: List[str] = []
-    for value in values:
-        ticker = normalize_ticker(value)
-        if ticker and ticker not in seen:
-            seen.add(ticker)
-            ordered.append(ticker)
-    return ordered
-
-
-def load_master_config() -> List[str]:
-    if not MASTER_JSON_PATH.exists():
-        return []
-    with MASTER_JSON_PATH.open("r", encoding="utf-8") as handle:
-        data = json.load(handle)
-    return unique(t for t in data if isinstance(t, str))
 
 
 
@@ -347,9 +320,6 @@ def fetch_records(
     return records
 
 
-MASTER_COLUMNS = COLUMNS
-
-
 def _cell_value(value: object) -> object:
     """Round floats to 2 decimal places for clean cell display."""
     if isinstance(value, float):
@@ -357,8 +327,9 @@ def _cell_value(value: object) -> object:
     return value
 
 
-# Columns checked when deciding if a ticker is speculative (all data columns except Ticker)
-_NULL_CHECK_COLUMNS = [c for c in COLUMNS if c != "Ticker"]
+# Columns checked when deciding if a ticker is speculative.
+# Exclude non-data columns: Ticker (identifier), Sector (always a string).
+_NULL_CHECK_COLUMNS = [c for c in COLUMNS if c not in ("Ticker", "Sector")]
 _SPECULATIVE_NULL_THRESHOLD = 3  # more than this many nulls → Speculative
 
 
@@ -381,155 +352,15 @@ def _split_records(records: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
     return core, speculative
 
 
-
-# ── Robinhood watchlist IDs (created in Claude.ai Investment Engine session) ──
-ROBINHOOD_WATCHLISTS = [
-    {
-        "name": "High Conviction",
-        "label": "WL1 — High Conviction 🟢",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "checks": [
-            ("Investment Score", ">=", 70),
-            ("Revenue Growth %", ">=", 20),
-            ("EPS Growth %", ">=", 20),
-            ("Net Profit Margin %", ">=", 10),
-            ("Debt/Equity", "<=", 1.0),
-            ("Upside %", ">=", 20),
-            ("Analyst Recom", "<=", 2.0),
-        ],
-    },
-    {
-        "name": "Pullback Watch",
-        "label": "WL2 — Pullback Watch 🔵",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "checks": [
-            ("Investment Score", ">=", 60),
-            ("Revenue Growth %", ">=", 15),
-            ("EPS Growth %", ">=", 10),
-            ("Net Profit Margin %", ">=", 5),
-            ("Debt/Equity", "<=", 1.5),
-            ("Upside %", ">=", 20),
-            ("Analyst Recom", "<=", 2.5),
-        ],
-    },
-    {
-        "name": "Deep Value",
-        "label": "WL3 — Deep Value 🟡",
-        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
-        "checks": [
-            ("Investment Score", ">=", 50),
-            ("Revenue Growth %", ">=", 10),
-            ("EPS Growth %", ">=", 0),
-            ("Net Profit Margin %", ">", 0),
-            ("Debt/Equity", "<=", 1.0),
-            ("Upside %", ">=", 15),
-            ("Analyst Recom", "<=", 2.5),
-        ],
-    },
-    {
-        "name": "Pipeline",
-        "label": "WL4 — Pipeline ⚪",
-        "list_id": "eb977178-35f0-43c6-b6ec-9e9f4ee2cb4c",
-        "checks": [
-            ("Investment Score", "range", 50, 60),
-            ("Revenue Growth %", ">=", 15),
-            ("EPS Growth %", ">=", 10),
-            ("Net Profit Margin %", ">=", 5),
-            ("Debt/Equity", "<=", 1.5),
-            # RSI: any — no threshold check
-            ("Upside %", ">=", 15),
-            ("Analyst Recom", "<=", 2.5),
-        ],
-    },
-]
-
-WATCHLIST_FILENAME = "watchlist"
 CONSOLIDATED_CSV_FILENAME = "consolidated"
-
-
-def _passes_check(value: Optional[float], op: str, *args: float) -> bool:
-    if value is None:
-        return False
-    if op == ">=":
-        return value >= args[0]
-    if op == ">":
-        return value > args[0]
-    if op == "<=":
-        return value <= args[0]
-    if op == "<":
-        return value < args[0]
-    if op == "range":
-        return args[0] <= value <= args[1]
-    return False
-
-
-def _as_float(value: object) -> Optional[float]:
-    if value is None:
-        return None
-    if isinstance(value, float):
-        return value
-    if isinstance(value, int):
-        return float(value)
-    try:
-        return float(str(value).strip().rstrip("%").replace(",", ""))
-    except (ValueError, AttributeError):
-        return None
-
-
-def classify_watchlists(core: List[Dict], speculative: List[Dict]) -> Dict[str, object]:
-    """
-    Apply highest-tier-wins logic across all rows.
-    Returns a summary dict with per-watchlist ticker lists and a count breakdown.
-    """
-    placement: Dict[str, List[Dict]] = {wl["name"]: [] for wl in ROBINHOOD_WATCHLISTS}
-    unqualified: List[str] = []
-
-    for row in core + speculative:
-        placed = False
-        for wl in ROBINHOOD_WATCHLISTS:
-            qualifies = all(
-                _passes_check(_as_float(row.get(col)), op, *args)
-                for col, op, *args in wl["checks"]
-            )
-            if qualifies:
-                placement[wl["name"]].append({
-                    "ticker": row.get("Ticker"),
-                    "investment_score": _cell_value(row.get("Investment Score")),
-                    "tab": row.get("Tab"),
-                    "list_id": wl["list_id"],
-                    "label": wl["label"],
-                })
-                placed = True
-                break
-        if not placed:
-            unqualified.append(row.get("Ticker", ""))
-
-    counts = {wl["name"]: len(placement[wl["name"]]) for wl in ROBINHOOD_WATCHLISTS}
-    print(f"[INFO] Watchlist classification — " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
-    print(f"[INFO] Unqualified tickers: {len(unqualified)}")
-
-    return {
-        "watchlists": placement,
-        "counts": counts,
-        "unqualified_count": len(unqualified),
-    }
-
-
-def _save_watchlist_classification(classification: Dict, date_stamp: str) -> Path:
-    path = TICKER_REVIEW_DIR / f"{WATCHLIST_FILENAME}_{date_stamp}.json"
-    with path.open("w", encoding="utf-8") as fh:
-        json.dump(classification, fh, indent=2)
-        fh.write("\n")
-    print(f"[INFO] Watchlist classification saved: {path}")
-    return path
 
 
 def _build_consolidated_csv(core: List[Dict], speculative: List[Dict]) -> str:
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=["Tab"] + MASTER_COLUMNS, extrasaction="ignore")
+    writer = csv.DictWriter(buf, fieldnames=["Tab"] + COLUMNS, extrasaction="ignore")
     writer.writeheader()
     for row in core + speculative:
-        writer.writerow({col: _cell_value(row.get(col)) for col in ["Tab"] + MASTER_COLUMNS})
+        writer.writerow({col: _cell_value(row.get(col)) for col in ["Tab"] + COLUMNS})
     return buf.getvalue()
 
 
@@ -568,28 +399,21 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
         top = sorted(bucket, key=lambda r: r.get("Investment Score") or 0, reverse=True)[:UNIVERSE_TOP_PER_SECTOR]
         selected.extend(top)
 
-    # Sort all selected tickers by investment score and assign global rank
+    # Sort all selected tickers by investment score descending
     qualified = sorted(selected, key=lambda r: r.get("Investment Score") or 0, reverse=True)
-    for rank, r in enumerate(qualified, start=1):
-        r["Rank"] = rank
 
     print(f"[INFO] {len(qualified)} tickers selected (top {UNIVERSE_TOP_PER_SECTOR} per sector, score >= {DISCOVERY_SCORE_THRESHOLD}, upside > 10%):")
-    for r in qualified:
-        print(f"  #{r['Rank']:<4} {r['Ticker']:<8} [{r.get('Sector', '')}] Score: {r.get('Investment Score')}")
+    for i, r in enumerate(qualified, start=1):
+        print(f"  #{i:<4} {r['Ticker']:<8} [{r.get('Sector', '')}] Score: {r.get('Investment Score')}")
 
     core, speculative = _split_records(qualified)
 
     csv_content = _build_consolidated_csv(core, speculative)
     csv_path = _save_consolidated_csv(csv_content, date_stamp)
 
-    classification = classify_watchlists(core, speculative)
-    watchlist_path = _save_watchlist_classification(classification, date_stamp)
-
     return {
         "date": date_stamp,
         "consolidated_csv": str(csv_path),
-        "watchlist_classification": str(watchlist_path),
-        "watchlist_counts": classification["counts"],
     }
 
 

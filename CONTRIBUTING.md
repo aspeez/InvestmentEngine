@@ -2,137 +2,78 @@
 
 Thanks for your interest in improving InvestmentEngine!
 
-## Getting Started
+## How the Engine Works
 
-The engine is designed to be modified via **configuration**, not code. Most changes should live in `investment-engine/Ticker-Master.json`.
+The engine is a single Python script: `investment-engine/engine/data_engine.py`.
 
----
-
-## Adding or Editing Tickers
-
-### Prerequisites
-
-You'll need:
-- A local clone of this repository
-- Python 3.8+
-- A Finviz Elite account and auth token
-
-### Steps
-
-#### 1. Edit `Ticker-Master.json`
-
-Navigate to `investment-engine/Ticker-Master.json`. The file is organized by **Sector → Pillar → Tickers**:
-
-```json
-{
-  "Technology": {
-    "AI Compute Chips": ["NVDA", "AMD", "QCOM"],
-    "AI Software and Platforms": ["MSFT", "GOOGL", "META"]
-  },
-  "Infrastructure": {
-    "AI Power Generation": ["NEE", "DUK"],
-    "AI Cooling": ["SPT", "COOL"]
-  }
-}
-```
-
-**To add a ticker:**
-- Find the appropriate Sector and Pillar
-- Append the ticker symbol to the list (must match Finviz format exactly — e.g., `NVDA`, not `Nvidia`)
-- If the Pillar doesn't exist, create it
-- If the Sector doesn't exist, create it
-
-**To remove a ticker:**
-- Delete it from the list
-- If a pillar becomes empty, delete the pillar key
-- If a sector becomes empty, delete the sector key
-
-#### 2. Verify Your Changes
-
-```powershell
-python investment-engine/engine/data_engine.py
-```
-
-The engine will:
-- Load your ticker configuration
-- Create required directories automatically
-- Fetch live data from Finviz
-- Output a scored Excel workbook and CSV
-
-Review the files in `investment-engine/sector/<SECTOR>/stock-data/`.
-
-#### 3. Commit and Push
-
-```bash
-git add investment-engine/Ticker-Master.json
-git commit -m "chore: add [TICKER] to [PILLAR]"
-git push origin main
-```
-
-On the next GitHub Actions run (or manual trigger), the engine will use your updated config.
+On each run it:
+1. Calls the Finviz Elite export API with pre-filters to narrow the universe
+2. Scores every returned ticker on a 0–100 Investment Score
+3. Keeps tickers with score ≥ 70 and Upside % > 10%
+4. Selects the top 10 per sector for diversity (up to 120 total)
+5. Writes a consolidated CSV sorted by Investment Score descending
 
 ---
 
-## Adding a New Pillar
+## Modifying the Scoring Algorithm
 
-Pillars represent investment themes (e.g., "AI Cybersecurity", "AI Power Generation").
+All scoring logic lives in `compute_investment_score()` in `data_engine.py`.
 
-**To add a pillar:**
+**To change a metric weight:**
 
-1. Edit `investment-engine/Ticker-Master.json`
-2. Find the appropriate Sector (or create a new one)
-3. Add a new key with your pillar name and an array of tickers:
+Find the `weighted` list inside `compute_investment_score()` and adjust the weight value. Weights are normalized by the sum of present metrics, so you do not need to ensure they sum to any fixed total.
 
-```json
-{
-  "Technology": {
-    "AI Compute Chips": ["NVDA"],
-    "[NEW_PILLAR_NAME]": ["TICKER1", "TICKER2"]
-  }
-}
+```python
+weighted = [
+    (rev_score, 0.20),   # ← change 0.20 to adjust Revenue Growth % weight
+    (eps_score, 0.10),
+    ...
+]
 ```
 
-4. Run the engine:
+**To add a new metric:**
 
-```powershell
-python investment-engine/engine/data_engine.py
-```
+1. Add the Finviz column code to `FINVIZ_COLUMNS` and document it in the comment block above
+2. Parse the raw value in `_parse_row()`
+3. Map it to a named field in the returned dict
+4. Carry it through `fetch_records()` into the record dict
+5. Add a normalized component score in `compute_investment_score()`
+6. Add the `(score, weight)` tuple to the `weighted` list
+7. Add the field name to `COLUMNS` so it appears in the CSV
+8. Update `COLUMN_REFERENCE.md` with a description
 
-The engine creates a per-sector `pillar_tickers.json` and a dedicated Excel sheet for your pillar automatically.
+**To remove a metric:**
+
+Reverse the steps above. If it is display-only, just remove it from `COLUMNS` — no scoring change needed.
 
 ---
 
-## Adding a New Sector
+## Changing Pre-filters
 
-Sectors organize multiple related pillars (e.g., "Technology", "Infrastructure").
+The Finviz screener pre-filters are defined in:
 
-**To add a sector:**
-
-1. Edit `investment-engine/Ticker-Master.json`
-2. Add a new top-level key with pillars and tickers:
-
-```json
-{
-  "Technology": { ... },
-  "[NEW_SECTOR]": {
-    "[PILLAR]": ["TICKER1", "TICKER2"]
-  }
-}
+```python
+FINVIZ_UNIVERSE_FILTERS = "fa_epsqoq_pos,fa_netmargin_pos,an_recomendation_buybetter"
 ```
 
-3. Run the engine — it creates `sector/[NEW_SECTOR]/` and all subdirectories.
+These narrow the universe before data is downloaded. Valid filter codes are found in the Finviz Elite screener URL. Adding stricter filters reduces the universe and may prevent some sectors from reaching 10 qualifying tickers.
 
 ---
 
-## Modifying Scoring Logic
+## Adjusting Score and Upside Thresholds
 
-**For changes to the Investment Score algorithm, Graham Number, or watchlist thresholds:**
+```python
+DISCOVERY_SCORE_THRESHOLD = 70.0   # minimum Investment Score to qualify
+UNIVERSE_TOP_PER_SECTOR = 10       # max tickers selected per sector
+```
 
-- Edit `investment-engine/engine/data_engine.py`
-- Update the relevant function (e.g., `compute_investment_score()`, `ROBINHOOD_WATCHLISTS`)
-- Add a docstring if the change is non-obvious
-- Test locally
-- Open a pull request with a clear description of the change
+Lowering `DISCOVERY_SCORE_THRESHOLD` increases the number of qualifying tickers. Raising `UNIVERSE_TOP_PER_SECTOR` increases diversity but may dilute quality.
+
+The Upside % floor (> 10%) is applied inline in `run()`:
+
+```python
+if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD and (r.get("Upside %") or 0) > 10:
+```
 
 ---
 
@@ -155,7 +96,6 @@ This project follows **PEP 8**. Key conventions:
 
 - Python 3.8+
 - Type hints on function signatures
-- Docstrings for public functions
 - Max line length: 100 characters
 - Use `black` for formatting (recommended)
 
@@ -168,12 +108,7 @@ This project follows **PEP 8**. Key conventions:
 3. Make your changes and test locally
 4. Commit with a clear message: `git commit -m "feat: description"`
 5. Push to your fork: `git push origin feat/your-feature`
-6. Open a pull request with:
-   - A clear title
-   - Description of changes
-   - Link to any related issues
-
-Your PR will be reviewed, and changes may be requested before merging.
+6. Open a pull request with a clear title and description of changes
 
 ---
 

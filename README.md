@@ -4,27 +4,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/aspeez/InvestmentEngine.svg)](https://github.com/aspeez/InvestmentEngine/issues)
 
-Automated weekly investment research and scoring platform for AI-sector stocks. Built on Finviz Elite data, delivers scored Excel workbooks and Robinhood watchlist integration.
+Automated daily investment research and scoring platform. Scans the full Finviz Elite universe, scores every qualifying stock on a 0–100 composite, and surfaces the top 10 per sector in a consolidated CSV sorted by Investment Score.
 
 ## ✨ Features
 
 - **📊 Automated Daily Scoring** — Runs every day at 7:00 AM EST via GitHub Actions
-- **💹 24-Column Analysis** — Evaluates growth, valuation, financial quality, and entry timing
+- **🌐 Full Universe Scan** — Scans all Finviz-covered stocks, not a fixed ticker list
 - **🔢 Weighted Composite Scoring** — 0–100 investment score with dynamic weight redistribution for missing data
-- **📁 Organized by AI Pillar** — 19 investment themes across Technology, Infrastructure, and Services
-- **📈 Multi-Tab Excel Workbooks** — Investment Master, Speculative, and per-pillar tabs with sorting
-- **🎯 Robinhood Integration** — Classifies tickers into 4 watchlists (WL1–WL4) with Claude.ai
-- **⚡ Single Bulk API Call** — Fetches data for all tickers at once for speed and efficiency
-- **🔄 CSV Export** — Consolidated Investment Master + Speculative combined for Claude.ai review
+- **🗂️ Sector Diversification** — Top 10 stocks per sector across all 12 Finviz sectors (up to 120 total)
+- **🔄 CSV Export** — Consolidated scored output sorted by Investment Score for Claude.ai review
 
 ## 📋 Table of Contents
 
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
 - [Project Structure](#project-structure)
-- [Configuration](#configuration)
 - [Scoring Model](#scoring-model)
-- [Watchlists](#watchlists)
 - [Local Setup](#local-setup)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -54,7 +49,7 @@ pip install -r requirements.txt
 Sign up for [Finviz Elite](https://finviz.com/elite.ashx). Your auth token is the `auth=` value in any export URL:
 
 ```
-https://elite.finviz.com/export?v=151&t=CEG&c=...&auth=YOUR_TOKEN_HERE
+https://elite.finviz.com/export?v=150&c=...&auth=YOUR_TOKEN_HERE
 ```
 
 ### 4. Set the Environment Variable
@@ -63,24 +58,15 @@ https://elite.finviz.com/export?v=151&t=CEG&c=...&auth=YOUR_TOKEN_HERE
 $env:FINVIZ = "your_finviz_auth_token_here"
 ```
 
-### 5. Run Phase 1 (Local)
+### 5. Run the Engine (Local)
 
 ```powershell
 python investment-engine/engine/data_engine.py
 ```
 
-Output files appear in `investment-engine/sector/<SECTOR>/stock-data/`.
+Output files appear in `investment-engine/stock-data/` and `investment-engine/ticker-review/`.
 
-### 6. Review the Workbook
-
-Open `investment_data_MMDDYYYY.xlsx` to see:
-- **Investment Master** — tickers with sufficient data, sorted by score
-- **Speculative Investments** — high-risk tickers with sparse data
-- **Pillar sheets** — all tickers for each investment theme
-
-For column details, see [COLUMN_REFERENCE.md](COLUMN_REFERENCE.md).
-
-### 7. Set Up GitHub Actions
+### 6. Set Up GitHub Actions
 
 1. Push your repo to GitHub
 2. Go to **Settings → Secrets and variables → Actions**
@@ -98,20 +84,20 @@ After each run, a GitHub Issue signals that Phase 2 is ready.
 
 Every day at 7:00 AM EST (or manually triggered):
 
-1. **Load tickers** from `Ticker-Master.json` (organized by Sector → Pillar)
-2. **Fetch live data** — single bulk GET to Finviz Elite for all tickers at once
-3. **Derive metrics:**
+1. **Scan Finviz universe** — calls the Finviz Elite export API with pre-filters (positive EPS growth, positive net margin, Buy/Strong Buy analyst rating) to narrow the universe before downloading
+2. **Derive metrics:**
    - Buy Zone = 52-Week High × 0.80
    - PSG = P/S Ratio ÷ Revenue Growth %
    - Graham Number = √(22.5 × EPS × Book/sh)
    - Upside % = ((Target − Price) / Price) × 100
-4. **Compute Investment Score** — 0–100 weighted composite across 11 metrics
-5. **Split tickers:**
-   - ≤ 2 null data columns → Investment Master
-   - \> 2 null data columns → Speculative Investments
-6. **Write Excel workbook** — sorted by score, with per-pillar tabs
-7. **Export consolidated CSV** — combines both tabs for Phase 2
-8. **Classify watchlists** — evaluate every ticker against 4 Robinhood scorecards
+3. **Compute Investment Score** — 0–100 weighted composite across 11 metrics
+4. **Filter** — keep only tickers with Investment Score ≥ 70 and Upside % > 10%
+5. **Select top 10 per sector** — picks the highest-scoring 10 from each of the 12 Finviz sectors for diversity (up to 120 total)
+6. **Sort** — all selected tickers ordered by Investment Score descending
+7. **Split tickers:**
+   - ≤ 3 null data columns → Investment Master
+   - \> 3 null data columns → Speculative Investments
+8. **Export consolidated CSV** — `investment-engine/stock-data/consolidated_MMDDYYYY.csv`
 9. **Commit and push** all output files
 10. **Create GitHub Issue** — signals Phase 2 is ready
 
@@ -126,8 +112,6 @@ Claude will:
 2. Check existing Robinhood watchlists for duplicates
 3. Add qualifying tickers to WL1–WL4 via Robinhood MCP connector
 4. Send completion summary with tickers added per watchlist
-5. Research additional High Conviction candidates not in the current ticker universe
-6. Deliver research results as a downloadable `research_MMDDYYYY.txt` file
 
 Close the GitHub Issue when done.
 
@@ -138,18 +122,11 @@ Close the GitHub Issue when done.
 ```
 InvestmentEngine/
 ├── investment-engine/
-│   ├── Ticker-Master.json                 ← Source of truth (Sector → Pillar → Tickers)
+│   ├── Ticker-Master.json                 ← Retained for reference; not used as engine input
 │   ├── engine/
-│   │   ├── data_engine.py                 ← Phase 1 engine
-│   │   └── push_watchlists.py             ← Reference script (Phase 2 via Claude)
-│   └── sector/
-│       └── <SECTOR>/
-│           ├── pillar_tickers.json        ← Auto-synced from Ticker-Master.json
-│           ├── stock-data/
-│           │   ├── investment_data_MMDDYYYY.xlsx
-│           │   └── consolidated_MMDDYYYY.csv
-│           └── ticker-review/
-│               └── watchlist_MMDDYYYY.json  ← watchlist classification (WL1–WL4)
+│   │   └── data_engine.py                 ← Phase 1 engine
+│   └── stock-data/
+│       └── consolidated_MMDDYYYY.csv      ← Scored output (up to 120 stocks)
 ├── .github/
 │   └── workflows/
 │       └── data_engine.yml
@@ -157,40 +134,10 @@ InvestmentEngine/
 ├── pyproject.toml                         ← Python packaging metadata
 ├── QUICKSTART.md                          ← Step-by-step setup guide
 ├── COLUMN_REFERENCE.md                    ← Detailed column definitions
-├── CONTRIBUTING.md                        ← How to add tickers & pillars
+├── CONTRIBUTING.md                        ← How to modify the engine
 ├── LICENSE                                ← MIT License
 └── README.md                              ← You are here
 ```
-
----
-
-## ⚙️ Configuration
-
-### Ticker-Master.json
-
-The source of truth for all tickers, organized hierarchically:
-
-```json
-{
-  "Technology": {
-    "AI Compute Chips": ["NVDA", "AMD", "AVGO"],
-    "AI Software and Platforms": ["MSFT", "GOOGL", "META"],
-    "AI Cybersecurity": ["CRWD", "NET", "PALO"]
-  },
-  "Infrastructure": {
-    "AI Power Generation": ["NEE", "DUK", "EXC"],
-    "AI Networking": ["JNPR", "SMCI", "FICO"]
-  }
-}
-```
-
-**To add a ticker:** Edit this file, append the symbol, and run the engine. Directories are created automatically.
-
-**To add a pillar:** Create a new key under any Sector with an array of tickers.
-
-**To add a sector:** Create a new top-level key with pillars.
-
-For details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -226,21 +173,6 @@ See [COLUMN_REFERENCE.md](COLUMN_REFERENCE.md) for per-metric details.
 
 ---
 
-## 📊 Watchlists
-
-Every ticker is classified into one of four Robinhood watchlists (first match wins, no duplicates):
-
-| Watchlist | Key Thresholds | Interpretation |
-|---|---|---|
-| **WL1 — High Conviction 🟢** | Score ≥70, Rev Growth ≥20%, EPS Growth ≥20%, Net Margin ≥10%, D/E ≤1.0, Upside ≥20%, Analyst ≤2.0 | Top-tier buys — strong fundamentals across all dimensions |
-| **WL2 — Pullback Watch 🔵** | Score ≥60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, Upside ≥20%, Analyst ≤2.5 | Wait for pullback to build position |
-| **WL3 — Deep Value 🟡** | Score ≥50, Rev Growth ≥10%, EPS Growth ≥0%, Net Margin >0%, D/E ≤1.0, Upside ≥15%, Analyst ≤2.5 | Undervalued — entry for long-term holds |
-| **WL4 — Pipeline ⚪** | Score 50–60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, Upside ≥15%, Analyst ≤2.5 | Watch for score acceleration into WL1–WL3 |
-
-Note: Gross Margin % is intentionally excluded from watchlist thresholds to avoid penalizing hardware/infrastructure plays.
-
----
-
 ## 💻 Local Setup
 
 ### Prerequisites
@@ -266,7 +198,7 @@ pip install -r requirements.txt
 # Set Finviz token
 $env:FINVIZ = "your_token_here"
 
-# Run Phase 1
+# Run the engine
 python investment-engine/engine/data_engine.py
 ```
 
@@ -294,22 +226,17 @@ $env:FINVIZ = "your_token_here"
 
 Finviz has no analyst consensus target for that ticker. Upside % will be `None`.
 
-### `[WARN] Finviz returned no data for: {TICKERS}`
+### `[WARN] Finviz request failed`
 
-Those symbols were not found in Finviz. Check spelling — must match Finviz format exactly (e.g., `NVDA` not `Nvidia`).
+Network issue or invalid auth token. Confirm Finviz Elite is accessible and your token is correct.
 
-### Workbook shows all None values
+### A known ticker is missing from the output
 
-Likely causes:
-1. **FINVIZ token not set** — check environment variable
-2. **Network issue** — confirm Finviz is accessible
-3. **Ticker spelling** — verify against Finviz
+The Finviz pre-filters (`fa_epsqoq_pos`, `fa_netmargin_pos`, `an_recomendation_buybetter`) may have excluded it. A ticker must have positive EPS growth, positive net margin, and a Buy or Strong Buy analyst rating to enter the scored pool. Tickers failing these gates are excluded before scoring.
 
-### I made changes to Ticker-Master.json but they're not showing up
+### Fewer than 120 rows in the CSV
 
-1. Run the engine locally to test: `python investment-engine/engine/data_engine.py`
-2. Commit and push changes
-3. Trigger GitHub Actions manually: **Actions → Investment Engine → Run workflow**
+Not all 12 sectors will always have 10 stocks meeting both the score ≥ 70 and upside > 10% thresholds. The output row count reflects what actually qualifies on that run.
 
 ---
 
@@ -317,9 +244,8 @@ Likely causes:
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
-- Adding or editing tickers
-- Creating new pillars and sectors
 - Modifying the scoring algorithm
+- Adjusting pre-filters or thresholds
 - Opening issues and pull requests
 
 ---
@@ -338,4 +264,4 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 ---
 
-**Made with ❤️ for AI-sector stock research.**
+**Made with ❤️ for stock research.**
