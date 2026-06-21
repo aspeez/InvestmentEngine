@@ -30,7 +30,7 @@ This document covers every column in the consolidated CSV output, including what
 
 **Values:** One of the 12 Finviz sectors — always a string.
 
-**Investment context:** The engine selects the top 10 stocks per sector to ensure diversity across the consolidated CSV. Use Sector to benchmark a ticker against its peers.
+**Investment context:** Use Sector to benchmark a ticker against its peers. The engine does not cap or filter by sector — all scored tickers appear in the output.
 
 ---
 
@@ -40,7 +40,7 @@ This document covers every column in the consolidated CSV output, including what
 
 **Values:** Positive decimal, e.g. `142.50`. Can be `None` if the ticker is not found by Finviz.
 
-**Investment context:** Price alone is not meaningful — always evaluate relative to Buy Zone, Target Price, and Graham Number. A low price does not make a stock cheap; a high price does not make it expensive.
+**Investment context:** Price alone is not meaningful — always evaluate relative to Buy Zone and Target Price. A low price does not make a stock cheap; a high price does not make it expensive.
 
 ---
 
@@ -166,23 +166,6 @@ This document covers every column in the consolidated CSV output, including what
 
 ---
 
-## Graham Undervalued
-
-**What it means:** A boolean flag indicating whether the stock is trading below its Graham Number — a classic value-investing estimate of intrinsic worth.
-
-**Formula:** `Graham Number = √(22.5 × EPS (ttm) × Book Value Per Share)`
-
-**Values:**
-- `True` — Current Price is below the Graham Number (stock appears undervalued by this measure)
-- `False` — Current Price is at or above the Graham Number
-- `None` — EPS or Book Value Per Share data was unavailable
-
-**Investment context:** The Graham Number was designed for stable, dividend-paying businesses — most high-growth stocks will fail this test. A reading of `True` in this universe is notable. A reading of `False` is expected for growth stocks.
-
-**This column does not affect the Investment Score.** It is informational only.
-
----
-
 ## Upside %
 
 **What it means:** The percentage gain from Current Price to analyst consensus Target Price.
@@ -199,7 +182,7 @@ This document covers every column in the consolidated CSV output, including what
 | < 5% | Fairly to fully valued |
 | Negative | Analysts see downside risk at current price |
 
-**Ideal:** ≥ 20%. Weight in the Investment Score: 10%. Tickers with Upside % ≤ 10% are excluded before selection.
+**Ideal:** ≥ 20%. Weight in the Investment Score: 10%.
 
 ---
 
@@ -207,7 +190,7 @@ This document covers every column in the consolidated CSV output, including what
 
 **What it means:** Year-over-year percentage change in revenue. Uses Sales Growth Q/Q (quarter over quarter) as the primary source, with Sales Growth Past 5 Years as a fallback. Both sourced from Finviz.
 
-**Values:** Float percentage (e.g., `18.5` = 18.5% growth). Can be negative. Values beyond ±300% are treated as data artifacts (typically caused by a near-zero prior-period base inflating Finviz's Q/Q math) and are nulled out; the fallback to the 5-year figure still applies in that case.
+**Values:** Float percentage (e.g., `18.5` = 18.5% growth). Can be negative.
 
 | Range | Investment signal |
 |---|---|
@@ -225,7 +208,7 @@ This document covers every column in the consolidated CSV output, including what
 
 **What it means:** Year-over-year percentage change in earnings per share. Uses EPS Growth Q/Q as the primary source, with EPS Growth Past 5 Years as a fallback. Both sourced from Finviz.
 
-**Values:** Float percentage. Can be negative. Values beyond ±300% are treated as data artifacts and are nulled out; the fallback to the 5-year figure still applies in that case.
+**Values:** Float percentage. Can be negative.
 
 | Range | Investment signal |
 |---|---|
@@ -420,4 +403,4 @@ P/E Ratio, P/S Ratio, RSI, and Short Interest are display-only columns — they 
 | 30–50 | **Mixed signals** — some positives offset by weaknesses |
 | < 30 | **Weak** — poor growth, expensive valuation, or bad timing |
 
-**Ideal:** ≥ 70 (minimum threshold to appear in the output CSV).
+All scored tickers appear in the output regardless of score — no minimum threshold is applied.
