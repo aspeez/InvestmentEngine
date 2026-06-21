@@ -86,6 +86,14 @@ class FinvizClient:
         eps_growth_5y = p(row.get("EPS Growth Past 5 Years"))
         eps_growth = eps_growth_qq if eps_growth_qq is not None else eps_growth_5y
 
+        # Finviz "52W High" is % below the 52-week high (negative number).
+        # Convert to the actual dollar price: price / (1 + pct/100).
+        pct_from_high = p(row.get("52W High"))
+        if price is not None and price > 0 and pct_from_high is not None:
+            fifty_two_wk_high: Optional[float] = price / (1 + pct_from_high / 100)
+        else:
+            fifty_two_wk_high = None
+
         return {
             "Current Price": price,
             "RSI": p(row.get("Relative Strength Index (14)")),
@@ -105,7 +113,7 @@ class FinvizClient:
             "Insider Ownership %": p(row.get("Insider Ownership")),
             "Institutional Ownership %": p(row.get("Institutional Ownership")),
             "Analyst Recom": p(row.get("Analyst Recom")),
-            "52-Week High": p(row.get("52W High")),
+            "52-Week High": fifty_two_wk_high,
             "Short Interest": p(row.get("Short Interest")),
             "Short Float %": p(row.get("Short Float")),
         }
@@ -132,9 +140,6 @@ class FinvizClient:
         except Exception as exc:
             print(f"[WARN] Finviz CSV parse failed: {exc}")
             return {}
-
-        if rows:
-            print(f"[DEBUG] Finviz CSV headers: {list(rows[0].keys())}")
 
         if not rows:
             print("[WARN] Finviz returned no data")
