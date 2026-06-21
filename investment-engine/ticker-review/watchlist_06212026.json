@@ -128,20 +128,6 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "CDE",
-        "investment_score": 86.5,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "IAG",
-        "investment_score": 86.3,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "PLTR",
         "investment_score": 86.3,
         "tab": "Investment Master",
@@ -163,34 +149,6 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "IDR",
-        "investment_score": 85.5,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "TFPM",
-        "investment_score": 85.0,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "FNV",
-        "investment_score": 84.8,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "BTG",
-        "investment_score": 84.1,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "LPG",
         "investment_score": 84.1,
         "tab": "Investment Master",
@@ -205,50 +163,8 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "AEM",
-        "investment_score": 83.9,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "GFI",
-        "investment_score": 83.9,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "ATCH",
         "investment_score": 83.7,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "SCZM",
-        "investment_score": 83.4,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "KGC",
-        "investment_score": 83.1,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "AG",
-        "investment_score": 82.3,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "MUX",
-        "investment_score": 82.1,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
@@ -261,29 +177,8 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "B",
-        "investment_score": 81.8,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "TCOM",
         "investment_score": 81.8,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "AU",
-        "investment_score": 81.6,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "CGAU",
-        "investment_score": 81.2,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
@@ -303,21 +198,7 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "HL",
-        "investment_score": 79.0,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "CBRS",
-        "investment_score": 78.1,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "PAAS",
         "investment_score": 78.1,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
@@ -345,13 +226,6 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "NEM",
-        "investment_score": 77.1,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "VINP",
         "investment_score": 77.0,
         "tab": "Investment Master",
@@ -368,13 +242,6 @@
       {
         "ticker": "ATAT",
         "investment_score": 76.3,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
-        "ticker": "PTC",
-        "investment_score": 76.1,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
@@ -408,13 +275,6 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "PUK",
-        "investment_score": 75.5,
-        "tab": "Investment Master",
-        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
-        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
-      },
-      {
         "ticker": "HSAI",
         "investment_score": 75.2,
         "tab": "Investment Master",
@@ -422,15 +282,29 @@
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "CMCL",
-        "investment_score": 75.1,
+        "ticker": "AMSC",
+        "investment_score": 73.8,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
       },
       {
-        "ticker": "FBIO",
-        "investment_score": 74.9,
+        "ticker": "AXIA",
+        "investment_score": 73.8,
+        "tab": "Investment Master",
+        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
+        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
+      },
+      {
+        "ticker": "ATEX",
+        "investment_score": 72.8,
+        "tab": "Investment Master",
+        "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
+        "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
+      },
+      {
+        "ticker": "GLBE",
+        "investment_score": 71.6,
         "tab": "Investment Master",
         "list_id": "915585b4-44b7-4a02-944a-02755d2389a7",
         "label": "WL1 \u2014 High Conviction \ud83d\udfe2"
@@ -459,13 +333,6 @@
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       },
       {
-        "ticker": "AUGO",
-        "investment_score": 81.8,
-        "tab": "Investment Master",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
-      },
-      {
         "ticker": "UROY",
         "investment_score": 80.9,
         "tab": "Investment Master",
@@ -482,13 +349,6 @@
       {
         "ticker": "TREE",
         "investment_score": 78.0,
-        "tab": "Investment Master",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
-      },
-      {
-        "ticker": "DRD",
-        "investment_score": 77.7,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
@@ -529,13 +389,6 @@
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       },
       {
-        "ticker": "ADSK",
-        "investment_score": 75.2,
-        "tab": "Investment Master",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
-      },
-      {
         "ticker": "APP",
         "investment_score": 75.2,
         "tab": "Investment Master",
@@ -543,8 +396,36 @@
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       },
       {
-        "ticker": "LITE",
-        "investment_score": 75.1,
+        "ticker": "MNSO",
+        "investment_score": 73.3,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
+        "ticker": "ARTW",
+        "investment_score": 72.3,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
+        "ticker": "NMM",
+        "investment_score": 71.2,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
+        "ticker": "ONON",
+        "investment_score": 70.4,
+        "tab": "Investment Master",
+        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
+        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
+      },
+      {
+        "ticker": "NFLX",
+        "investment_score": 70.2,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
@@ -566,29 +447,57 @@
         "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
       },
       {
-        "ticker": "ERO",
-        "investment_score": 76.9,
+        "ticker": "ZG",
+        "investment_score": 73.5,
         "tab": "Investment Master",
         "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
         "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
       },
       {
-        "ticker": "MNTN",
-        "investment_score": 76.1,
+        "ticker": "RERE",
+        "investment_score": 73.5,
         "tab": "Investment Master",
         "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
         "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
       },
       {
-        "ticker": "IDN",
-        "investment_score": 75.6,
+        "ticker": "Z",
+        "investment_score": 73.3,
         "tab": "Investment Master",
         "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
         "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
       },
       {
-        "ticker": "ALAR",
-        "investment_score": 74.8,
+        "ticker": "VTMX",
+        "investment_score": 73.1,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "CSGP",
+        "investment_score": 71.9,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "DDI",
+        "investment_score": 71.5,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "FENG",
+        "investment_score": 70.7,
+        "tab": "Investment Master",
+        "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
+        "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
+      },
+      {
+        "ticker": "JLL",
+        "investment_score": 70.0,
         "tab": "Investment Master",
         "list_id": "9de9edca-b052-415b-b933-cf65746eb1e8",
         "label": "WL3 \u2014 Deep Value \ud83d\udfe1"
@@ -597,10 +506,10 @@
     "Pipeline": []
   },
   "counts": {
-    "High Conviction": 62,
-    "Pullback Watch": 16,
-    "Deep Value": 6,
+    "High Conviction": 44,
+    "Pullback Watch": 17,
+    "Deep Value": 10,
     "Pipeline": 0
   },
-  "unqualified_count": 16
+  "unqualified_count": 19
 }
