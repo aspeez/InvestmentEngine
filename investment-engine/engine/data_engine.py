@@ -86,13 +86,20 @@ class FinvizClient:
         # Finviz exports Market Cap in millions — convert to full dollars, store as int
         market_cap = int(market_cap_raw * 1_000_000) if market_cap_raw is not None else None
 
-        rev_growth_qq = self._clamp_growth(p(row.get("Sales Growth Quarter Over Quarter")))
-        rev_growth_5y = self._clamp_growth(p(row.get("Sales Growth Past 5 Years")))
+        rev_qq_raw = p(row.get("Sales Growth Quarter Over Quarter"))
+        rev_5y_raw = p(row.get("Sales Growth Past 5 Years"))
+        rev_growth_qq = self._clamp_growth(rev_qq_raw)
+        rev_growth_5y = self._clamp_growth(rev_5y_raw)
         rev_growth = rev_growth_qq if rev_growth_qq is not None else rev_growth_5y
+        # Finviz had data but every source was clamped — likely a near-zero base artifact
+        rev_growth_suspect = rev_growth is None and (rev_qq_raw is not None or rev_5y_raw is not None)
 
-        eps_growth_qq = self._clamp_growth(p(row.get("EPS Growth Quarter Over Quarter")))
-        eps_growth_5y = self._clamp_growth(p(row.get("EPS Growth Past 5 Years")))
+        eps_qq_raw = p(row.get("EPS Growth Quarter Over Quarter"))
+        eps_5y_raw = p(row.get("EPS Growth Past 5 Years"))
+        eps_growth_qq = self._clamp_growth(eps_qq_raw)
+        eps_growth_5y = self._clamp_growth(eps_5y_raw)
         eps_growth = eps_growth_qq if eps_growth_qq is not None else eps_growth_5y
+        eps_growth_suspect = eps_growth is None and (eps_qq_raw is not None or eps_5y_raw is not None)
         
         
         # Finviz "52W High" is % below the 52-week high (negative number).
@@ -115,7 +122,9 @@ class FinvizClient:
             "EPS": p(row.get("EPS (ttm)")),
             "Book Value Per Share": p(row.get("Book/sh")),
             "Revenue Growth %": rev_growth,
+            "Revenue Growth Suspect": rev_growth_suspect,
             "EPS Growth %": eps_growth,
+            "EPS Growth Suspect": eps_growth_suspect,
             "Gross Margin %": p(row.get("Gross Margin")),
             "Net Profit Margin %": p(row.get("Profit Margin")),
             "Debt/Equity": p(row.get("Total Debt/Equity")),
@@ -196,7 +205,13 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
     # Growth (30%)
     rev_score = norm(record.get("Revenue Growth %"), -50.0, 100.0)       # 20%
+    # If Finviz had data but every source was clamped as an artifact, score as 0
+    # rather than redistributing weight as though the metric were simply missing.
+    if rev_score is None and record.get("Revenue Growth Suspect", False):
+        rev_score = 0.0
     eps_score = norm(record.get("EPS Growth %"), -50.0, 100.0)           # 10%
+    if eps_score is None and record.get("EPS Growth Suspect", False):
+        eps_score = 0.0
 
     # Financial Quality (25%)
     gm_score = norm(record.get("Gross Margin %"), 0.0, 100.0)            # 10%
@@ -312,7 +327,9 @@ def fetch_records(
             "Graham Undervalued": graham_undervalued,
             "Upside %": upside_pct,
             "Revenue Growth %": metrics.get("Revenue Growth %"),
+            "Revenue Growth Suspect": metrics.get("Revenue Growth Suspect", False),
             "EPS Growth %": metrics.get("EPS Growth %"),
+            "EPS Growth Suspect": metrics.get("EPS Growth Suspect", False),
             "Gross Margin %": metrics.get("Gross Margin %"),
             "Net Profit Margin %": metrics.get("Net Profit Margin %"),
             "Debt/Equity": metrics.get("Debt/Equity"),
