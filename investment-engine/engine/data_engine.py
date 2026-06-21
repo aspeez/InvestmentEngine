@@ -277,7 +277,7 @@ UNIVERSE_TOP_PER_SECTOR = 10
 
 # Finviz screener pre-filters aligned with scoring criteria (highest-weight metrics first):
 # revenue growth QoQ > 10%, positive EPS growth, positive net margin, Buy or Strong Buy rating
-FINVIZ_UNIVERSE_FILTERS = "fa_salesqoq_pos,fa_epsqoq_pos,fa_netmargin_pos,an_recomendation_buybetter"
+FINVIZ_UNIVERSE_FILTERS = "fa_epsqoq_pos,fa_netmargin_pos,an_recomendation_buybetter"
 
 
 def fetch_records(
