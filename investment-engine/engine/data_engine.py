@@ -105,7 +105,7 @@ class FinvizClient:
             "Insider Ownership %": p(row.get("Insider Ownership")),
             "Institutional Ownership %": p(row.get("Institutional Ownership")),
             "Analyst Recom": p(row.get("Analyst Recom")),
-            "52-Week High": p(row.get("52W High")),
+            "52-Week High": p(row.get("52-Week High")),
             "Short Interest": p(row.get("Short Interest")),
             "Short Float %": p(row.get("Short Float")),
         }
