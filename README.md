@@ -8,8 +8,8 @@ Automated weekly investment research and scoring platform for AI-sector stocks. 
 
 ## ✨ Features
 
-- **📊 Automated Weekly Scoring** — Runs every Sunday at 9:00 PM UTC via GitHub Actions
-- **💹 21-Column Analysis** — Evaluates growth, valuation, financial quality, and entry timing
+- **📊 Automated Daily Scoring** — Runs every day at 7:00 AM EST via GitHub Actions
+- **💹 24-Column Analysis** — Evaluates growth, valuation, financial quality, and entry timing
 - **🔢 Weighted Composite Scoring** — 0–100 investment score with dynamic weight redistribution for missing data
 - **📁 Organized by AI Pillar** — 19 investment themes across Technology, Infrastructure, and Services
 - **📈 Multi-Tab Excel Workbooks** — Investment Master, Speculative, and per-pillar tabs with sorting
@@ -85,7 +85,7 @@ For column details, see [COLUMN_REFERENCE.md](COLUMN_REFERENCE.md).
 1. Push your repo to GitHub
 2. Go to **Settings → Secrets and variables → Actions**
 3. Add `FINVIZ` secret with your auth token
-4. The workflow runs automatically every Sunday at 9:00 PM UTC
+4. The workflow runs automatically every day at 7:00 AM EST
 5. Manual trigger: **Actions → Investment Engine → Run workflow**
 
 After each run, a GitHub Issue signals that Phase 2 is ready.
@@ -96,12 +96,13 @@ After each run, a GitHub Issue signals that Phase 2 is ready.
 
 ### Phase 1 — GitHub Actions (Automated)
 
-Every Sunday at 9:00 PM UTC (or manually triggered):
+Every day at 7:00 AM EST (or manually triggered):
 
 1. **Load tickers** from `Ticker-Master.json` (organized by Sector → Pillar)
 2. **Fetch live data** — single bulk GET to Finviz Elite for all tickers at once
 3. **Derive metrics:**
-   - Buy Zone = Current Price × 0.80
+   - Buy Zone = 52-Week High × 0.80
+   - PSG = P/S Ratio ÷ Revenue Growth %
    - Graham Number = √(22.5 × EPS × Book/sh)
    - Upside % = ((Target − Price) / Price) × 100
 4. **Compute Investment Score** — 0–100 weighted composite across 11 metrics
@@ -197,18 +198,21 @@ For details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The **Investment Score (0–100)** is a weighted composite across 4 categories:
 
-| Category | Metrics | Weight |
+| Category | Metrics | Nominal Weight |
 |---|---|---|
 | **Growth (30%)** | Revenue Growth %, EPS Growth % | 20%, 10% |
 | **Financial Quality (25%)** | Gross Margin %, Net Profit Margin %, Debt/Equity | 10%, 10%, 5% |
-| **Valuation (25%)** | P/S Ratio, Upside %, P/E Ratio | 10%, 10%, 5% |
-| **Entry Timing (20%)** | RSI, Buy Zone Proximity, Analyst Recom | 10%, 5%, 5% |
+| **Valuation (20%)** | PEG, PSG, Upside % | 5%, 5%, 10% |
+| **Entry Timing (15%)** | Buy Zone vs Price, Analyst Recom, Short Float % | 5%, 5%, 5% |
+
+Weights sum to 90% nominally (RSI removed). The formula divides by `total_weight`, so the 10% redistributes proportionally across all present metrics automatically.
 
 **Scoring direction:**
 - ⬆️ Higher is better: Revenue Growth, EPS Growth, Gross Margin, Net Profit Margin, Upside %
-- ⬇️ Lower is better: P/E (capped at 60), P/S (capped at 30), Debt/Equity (capped at 3.0), Analyst Recom (1.0 = strong buy)
-- 📊 RSI: Peaks at 30 (oversold), zero at 80 (overbought)
-- 💰 Buy Zone Proximity: 100 at or below buy zone, 0 when 25%+ above
+- ⬇️ Lower is better: PEG (capped at 3.0), PSG (capped at 3.0), Debt/Equity (capped at 3.0), Short Float % (capped at 30%), Analyst Recom (1.0 = strong buy)
+- 💰 Buy Zone vs Price: 100 at or below buy zone (52-Week High × 0.80), 0 when 25%+ above
+
+**Display-only columns (not scored):** P/E Ratio, P/S Ratio, RSI, Short Interest
 
 **Missing data:** Weights are redistributed proportionally so partial data still produces a valid score.
 
@@ -228,9 +232,9 @@ Every ticker is classified into one of four Robinhood watchlists (first match wi
 
 | Watchlist | Key Thresholds | Interpretation |
 |---|---|---|
-| **WL1 — High Conviction 🟢** | Score ≥70, Rev Growth ≥20%, EPS Growth ≥20%, Net Margin ≥10%, D/E ≤1.0, RSI 30–55, Upside ≥20%, Analyst ≤2.0 | Top-tier buys — strong fundamental[...]
-| **WL2 — Pullback Watch 🔵** | Score ≥60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, RSI 30–50, Upside ≥20%, Analyst ≤2.5 | Wait for pullback to build position |
-| **WL3 — Deep Value 🟡** | Score ≥50, Rev Growth ≥10%, EPS Growth ≥0%, Net Margin >0%, D/E ≤1.0, RSI ≤35, Upside ≥15%, Analyst ≤2.5 | Undervalued, oversold — entry for long-term h[...]
+| **WL1 — High Conviction 🟢** | Score ≥70, Rev Growth ≥20%, EPS Growth ≥20%, Net Margin ≥10%, D/E ≤1.0, Upside ≥20%, Analyst ≤2.0 | Top-tier buys — strong fundamentals across all dimensions |
+| **WL2 — Pullback Watch 🔵** | Score ≥60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, Upside ≥20%, Analyst ≤2.5 | Wait for pullback to build position |
+| **WL3 — Deep Value 🟡** | Score ≥50, Rev Growth ≥10%, EPS Growth ≥0%, Net Margin >0%, D/E ≤1.0, Upside ≥15%, Analyst ≤2.5 | Undervalued — entry for long-term holds |
 | **WL4 — Pipeline ⚪** | Score 50–60, Rev Growth ≥15%, EPS Growth ≥10%, Net Margin ≥5%, D/E ≤1.5, Upside ≥15%, Analyst ≤2.5 | Watch for score acceleration into WL1–WL3 |
 
 Note: Gross Margin % is intentionally excluded from watchlist thresholds to avoid penalizing hardware/infrastructure plays.

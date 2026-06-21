@@ -36,7 +36,7 @@ This document covers every column generated in the workbook, including what it m
 
 ## RSI
 
-**What it means:** Relative Strength Index (14-period) — a momentum oscillator measuring the speed and magnitude of recent price changes. Sourced from Finviz.
+**What it means:** Relative Strength Index sourced from Finviz (column 59). Finviz's export RSI field uses an unconfirmed lookback window (documented as 14-period but not independently verified). Kept as a display column for reference but **no longer included in the Investment Score** as of feat_scoring_2.0.
 
 **Values:** Float between 0 and 100. Can be `None` if Finviz lacks sufficient price history.
 
@@ -47,7 +47,7 @@ This document covers every column generated in the workbook, including what it m
 | 50–70 | Neutral to slightly overbought | Caution — momentum is fading |
 | > 70 | Overbought | **Avoid new entries** — likely due for a pullback |
 
-**Ideal:** 30–50. The Investment Score assigns maximum points at RSI = 30 and zero points at RSI ≥ 80. Weight: 10%.
+**Ideal entry:** 30–50. RSI is display-only — it is not weighted in the Investment Score.
 
 ---
 
@@ -65,7 +65,7 @@ This document covers every column generated in the workbook, including what it m
 | 40–80 | Typical for high-growth AI plays | Reasonable — check growth rate |
 | > 80 | Expensive, priced for perfection | Elevated risk — needs strong growth to justify |
 
-**Ideal for this universe:** Below 40 is attractive. The Investment Score caps the P/E component at 60 — anything at or above that scores 0. Weight: 5%.
+**Ideal for this universe:** Below 40 is attractive. P/E Ratio is a display-only column — it is not part of the Investment Score. See PEG for the valuation metric that is scored.
 
 ---
 
@@ -82,7 +82,7 @@ This document covers every column generated in the workbook, including what it m
 | 15–30 | Expensive | Requires strong revenue growth to justify |
 | > 30 | Very expensive | Significant premium — high execution risk |
 
-**Ideal:** Below 10. The Investment Score caps the P/S component at 30 — anything at or above that scores 0. Weight: 10%.
+**Ideal:** Below 10. P/S Ratio is a display-only column — it is not part of the Investment Score. See PSG for the valuation metric that is scored.
 
 ---
 
@@ -105,13 +105,18 @@ This document covers every column generated in the workbook, including what it m
 
 ## Buy Zone
 
-**What it means:** A reference entry price set at 20% below the current market price. Intended as a target for disciplined entry — if the stock pulls back to this level, it represents a more favorable risk/reward.
+**What it means:** A reference entry price set at 20% below the 52-Week High. Scores entry quality — buying near the buy zone means purchasing at a meaningful discount from recent peak strength.
 
-**Formula:** `Buy Zone = Current Price × 0.80`
+**Formula:** `Buy Zone = 52-Week High × 0.80`
 
-**Values:** Positive float, always less than Current Price.
+**Scoring:**
+- Score 100 if `Current Price ≤ Buy Zone`
+- Score 0 if `Current Price ≥ Buy Zone × 1.25`
+- Linear decay between those two bounds
 
-**Investment context:** Think of this as your limit-order target rather than a buy signal at today's price. The Buy Zone shifts with the price each run — track it across multiple weeks to identify meaningful support levels.
+**Values:** Derived from the 52-Week High (Finviz column 57), not from the current price. This keeps the reference point stable — it does not shift with daily price movement.
+
+**Investment context:** Using 52-Week High as the anchor avoids the circular-logic trap of deriving the buy zone from today's price itself. A stock trading 20%+ below its 52-week high is signaling a genuine pullback from recent strength, which is a more meaningful entry signal than a price that merely dropped from wherever it happened to open today.
 
 ---
 
@@ -338,19 +343,23 @@ Both EPS and Book/sh are sourced from Finviz.
 
 **How it is computed:** Each metric is normalized to a 0–100 component score, then multiplied by its weight. If a metric is missing, its weight is redistributed proportionally to the remaining metrics so partial data still produces a meaningful score.
 
-| Category | Metric | Weight |
-|---|---|---|
-| Growth (30%) | Revenue Growth % | 20% |
-| | EPS Growth % | 10% |
-| Financial Quality (25%) | Gross Margin % | 10% |
-| | Net Profit Margin % | 10% |
-| | Debt/Equity | 5% |
-| Valuation (25%) | P/S Ratio | 10% |
-| | Upside % | 10% |
-| | P/E Ratio | 5% |
-| Entry Timing (20%) | RSI | 10% |
-| | Buy Zone Proximity | 5% |
-| | Analyst Recom | 5% |
+| Category | Metric | Nominal Weight | Notes |
+|---|---|---|---|
+| Growth (30%) | Revenue Growth % | 20% | |
+| | EPS Growth % | 10% | |
+| Financial Quality (25%) | Gross Margin % | 10% | |
+| | Net Profit Margin % | 10% | |
+| | Debt/Equity | 5% | |
+| Valuation (20%) | PEG | 5% | Finviz native (col 9); replaces P/E in score |
+| | PSG | 5% | Computed: P/S ÷ Revenue Growth %; replaces P/S in score |
+| | Upside % | 10% | |
+| Entry Timing (15%) | Buy Zone vs Price | 5% | Based on 52-Week High (col 57), not current price |
+| | Analyst Recom | 5% | |
+| | Short Float % | 5% | Finviz col 30; lower is better; clamp at 30% |
+
+P/E Ratio, P/S Ratio, RSI, and Short Interest are display-only columns — they are not part of the weighted score sum.
+
+**Weight normalization note:** The 11 metrics above sum to 90% nominally (RSI's original 10% was removed). The scoring formula divides by `total_weight` rather than a fixed 1.0, so when all 11 metrics are present the effective proportional redistribution is automatic — Revenue Growth % effectively carries 20/90 ≈ 22.2% of the scoring influence, and so on. Missing metrics redistribute their weight to the remaining present metrics.
 
 | Score Range | Interpretation |
 |---|---|
@@ -359,4 +368,4 @@ Both EPS and Book/sh are sourced from Finviz.
 | 30–50 | **Mixed signals** — some positives offset by weaknesses |
 | < 30 | **Weak** — poor growth, expensive valuation, or bad timing |
 
-**Ideal:** ≥ 60. Treat scores above 70 as priority watch-list candidates, especially if RSI is also below 50.
+**Ideal:** ≥ 60. Treat scores above 70 as priority watch-list candidates.
