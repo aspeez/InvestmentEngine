@@ -119,44 +119,45 @@ class FinvizClient:
             "Short Float %": p(row.get("Short Float")),
         }
 
-    def get_all_metrics(self, tickers: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
-        """Single bulk export call — returns a dict keyed by ticker symbol."""
-        ticker_param = ",".join(tickers)
+    def _fetch_export(self, extra_params: str = "", timeout: int = 30) -> Dict[str, Dict[str, Optional[float]]]:
         url = (
             f"{FINVIZ_BASE_URL}?v=150"
-            f"&t={ticker_param}"
+            f"{extra_params}"
             f"&c={FINVIZ_COLUMNS}"
             f"&auth={self.auth_token}"
         )
         try:
-            response = self.session.get(url, timeout=30)
+            response = self.session.get(url, timeout=timeout)
             response.raise_for_status()
         except Exception as exc:
-            print(f"[WARN] Finviz bulk request failed: {exc}")
+            print(f"[WARN] Finviz request failed: {exc}")
             return {}
-
         try:
             reader = csv.DictReader(io.StringIO(response.text))
             rows = list(reader)
         except Exception as exc:
             print(f"[WARN] Finviz CSV parse failed: {exc}")
             return {}
-
         if not rows:
             print("[WARN] Finviz returned no data")
             return {}
+        return {
+            row.get("Ticker", "").strip().upper(): self._parse_row(row)
+            for row in rows
+            if row.get("Ticker", "").strip()
+        }
 
-        result: Dict[str, Dict[str, Optional[float]]] = {}
-        for row in rows:
-            ticker = row.get("Ticker", "").strip().upper()
-            if ticker:
-                result[ticker] = self._parse_row(row)
-
+    def get_all_metrics(self, tickers: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
+        """Bulk export for a specific list of tickers."""
+        result = self._fetch_export(f"&t={','.join(tickers)}")
         missing = [t for t in tickers if t not in result]
         if missing:
             print(f"[WARN] Finviz returned no data for: {', '.join(missing)}")
-
         return result
+
+    def get_universe_metrics(self) -> Dict[str, Dict[str, Optional[float]]]:
+        """Export all Finviz tickers without a ticker filter."""
+        return self._fetch_export(timeout=120)
 
 
 def ensure_directories() -> None:
@@ -268,9 +269,13 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
     return round(weighted_sum / total_weight, 1)
 
 
+DISCOVERY_SCORE_THRESHOLD = 70.0
+
+
 def fetch_records(
     tickers: List[str],
     metrics_cache: Dict[str, Dict[str, Optional[float]]],
+    quiet: bool = False,
 ) -> List[Dict[str, Optional[float]]]:
     records: List[Dict[str, Optional[float]]] = []
     for ticker in tickers:
@@ -282,7 +287,7 @@ def fetch_records(
         finviz_target = metrics.get("Finviz Target Price")
 
         target_price = finviz_target
-        if target_price is None:
+        if target_price is None and not quiet:
             print(f"[WARN] Target Price unavailable for {ticker} — no analyst consensus from Finviz")
 
         if target_price is not None and current_price not in (None, 0):
@@ -529,10 +534,12 @@ def _save_consolidated_csv(csv_content: str, date_stamp: str) -> Path:
 def run(auth_token: Optional[str]) -> Dict[str, object]:
     ensure_directories()
     tickers = load_master_config()
+    ticker_set = set(tickers)
 
     EST = timezone(timedelta(hours=-5))
     date_stamp = datetime.now(tz=EST).strftime(DATE_FORMAT)
 
+    client: Optional[FinvizClient] = None
     metrics_cache: Dict[str, Dict[str, Optional[float]]] = {}
     if auth_token:
         client = FinvizClient(auth_token)
@@ -542,6 +549,36 @@ def run(auth_token: Optional[str]) -> Dict[str, object]:
 
     records = fetch_records(tickers, metrics_cache)
     core, speculative = _split_records(records)
+
+    # ── Discovery scan ──────────────────────────────────────────────────────────
+    high_score_count = sum(
+        1 for r in records if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
+    )
+    print(f"[INFO] {high_score_count} portfolio tickers score >= {DISCOVERY_SCORE_THRESHOLD} (discovery threshold)")
+
+    if client is not None:
+        print("[INFO] Running Finviz universe scan for new discoveries...")
+        universe_metrics = client.get_universe_metrics()
+        print(f"[INFO] Finviz universe returned {len(universe_metrics)} tickers")
+
+        new_tickers = [t for t in universe_metrics if t not in ticker_set]
+        discovery_records = fetch_records(new_tickers, universe_metrics, quiet=True)
+        discovery_high = [
+            r for r in discovery_records
+            if (r.get("Investment Score") or 0) >= DISCOVERY_SCORE_THRESHOLD
+        ]
+
+        if discovery_high:
+            disc_core, disc_speculative = _split_records(discovery_high)
+            core = core + disc_core
+            speculative = speculative + disc_speculative
+            sorted_disc = sorted(discovery_high, key=lambda r: r.get("Investment Score") or 0, reverse=True)
+            print(f"\n[INFO] {len(discovery_high)} new tickers discovered with Investment Score >= {DISCOVERY_SCORE_THRESHOLD}:")
+            for r in sorted_disc:
+                print(f"  {r['Ticker']:<8} Score: {r.get('Investment Score')}")
+        else:
+            print("[INFO] No new tickers discovered above the threshold")
+    # ────────────────────────────────────────────────────────────────────────────
 
     csv_content = _build_consolidated_csv(core, speculative)
     csv_path = _save_consolidated_csv(csv_content, date_stamp)
