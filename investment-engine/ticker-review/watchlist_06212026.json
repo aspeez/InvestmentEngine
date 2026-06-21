@@ -354,13 +354,6 @@
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
       },
       {
-        "ticker": "ONC",
-        "investment_score": 76.9,
-        "tab": "Investment Master",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
-      },
-      {
         "ticker": "GLNG",
         "investment_score": 76.2,
         "tab": "Investment Master",
@@ -419,13 +412,6 @@
       {
         "ticker": "ONON",
         "investment_score": 70.4,
-        "tab": "Investment Master",
-        "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
-        "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
-      },
-      {
-        "ticker": "NFLX",
-        "investment_score": 70.2,
         "tab": "Investment Master",
         "list_id": "cde9b1bd-a043-450b-b8b5-e4ed0c74d61b",
         "label": "WL2 \u2014 Pullback Watch \ud83d\udd35"
@@ -507,9 +493,9 @@
   },
   "counts": {
     "High Conviction": 44,
-    "Pullback Watch": 17,
+    "Pullback Watch": 15,
     "Deep Value": 10,
     "Pipeline": 0
   },
-  "unqualified_count": 19
+  "unqualified_count": 21
 }
