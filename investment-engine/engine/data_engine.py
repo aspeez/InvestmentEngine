@@ -241,7 +241,7 @@ def compute_investment_score(record: Dict[str, Optional[float]]) -> Optional[flo
 
 # Finviz screener filters: small-to-mid cap, NASDAQ/NYSE, D/E < 1, net margin > 10%,
 # PEG 0-1.5, avg volume > 1M, price up to $300
-FINVIZ_UNIVERSE_FILTERS = "cap_1to,exch_nasd|nyse,fa_debteq_u1,fa_netmargin_o10,fa_peg_0to1.5,sh_avgvol_o1000"
+FINVIZ_UNIVERSE_FILTERS = "cap_1to,exch_nasd|nyse,fa_debteq_u1,fa_netmargin_o10,fa_peg_0to1.5,sh_avgvol_o1000,geo_usa"
 
 
 def fetch_records(
