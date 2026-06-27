@@ -20,7 +20,7 @@ FINVIZ_BASE_URL = "https://elite.finviz.com/export"
 # 41=Profit Margin, 39=Gross Margin, 48=Beta, 26=Insider Ownership,
 # 28=Institutional Ownership, 62=Analyst Recom, 57=52W High,
 # 30=Short Float, 84=Short Interest
-FINVIZ_COLUMNS = "1,3,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,57,30,84"
+FINVIZ_COLUMNS = "1,3,65,59,7,9,10,6,69,16,22,19,73,23,21,12,38,41,39,48,26,28,62,57,30,84,68"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STOCK_DATA_DIR = REPO_ROOT / "stock-data"
@@ -51,6 +51,7 @@ COLUMNS = [
     "Analyst Recom",
     "Short Interest",
     "Short Float %",
+    "Earnings Date",
     "Investment Score",
 ]
 
@@ -117,6 +118,7 @@ class FinvizClient:
             "52-Week High": fifty_two_wk_high,
             "Short Interest": p(row.get("Short Interest")),
             "Short Float %": p(row.get("Short Float")),
+            "Earnings Date": p(row.get("Earnings Date")),
         }
 
     def _fetch_export(self, extra_params: str = "", timeout: int = 30) -> Dict[str, Dict[str, Optional[float]]]:
@@ -297,6 +299,7 @@ def fetch_records(
             "Analyst Recom": metrics.get("Analyst Recom"),
             "Short Interest": metrics.get("Short Interest"),
             "Short Float %": metrics.get("Short Float %"),
+            "Earnings Date": metrics.get("Earnings Date"),
         }
         record["Investment Score"] = compute_investment_score(record)
         records.append(record)
