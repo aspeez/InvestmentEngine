@@ -118,7 +118,7 @@ class FinvizClient:
             "52-Week High": fifty_two_wk_high,
             "Short Interest": p(row.get("Short Interest")),
             "Short Float %": p(row.get("Short Float")),
-            "Earnings Date": p(row.get("Earnings Date")),
+            "Earnings Date": row.get("Earnings Date") or None,
         }
 
     def _fetch_export(self, extra_params: str = "", timeout: int = 30) -> Dict[str, Dict[str, Optional[float]]]:
